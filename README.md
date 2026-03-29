@@ -16,3 +16,5 @@ Look for the local battery IP adress in your router/AP. Input this in the setup 
 The port for control is 8080.
 
 Only ONE local device can control the battery at the same time.
+
+Upload files under: custom_components/aecc_local
