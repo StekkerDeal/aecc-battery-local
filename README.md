@@ -17,8 +17,6 @@ A Home Assistant custom integration that provides **direct local TCP control** o
 - **Local-only** — communicates directly with your battery over your LAN
 - **Fast polling** — 2-second update interval with intelligent failure tolerance
 - **Power setpoint control** — charge or discharge at any wattage up to the battery's rated maximum
-- **Work mode selector** — switch between Self-Consumption (AI), Custom/Manual, and Disabled
-- **EMS enable/disable switch** — master on/off for the energy management system
 - **Battery sensors** — AC Charging Power, Battery Discharging Power, Battery SOC
 - **Developer services** — read/write raw registers, scan register ranges, send arbitrary commands
 
@@ -28,7 +26,7 @@ A Home Assistant custom integration that provides **direct local TCP control** o
 
 - Home Assistant **2024.1.0** or newer
 - Your Sunpura battery must be on the **same local network** as Home Assistant
-- You need the battery's **static IP address** and **TCP port** (typically `6001` or `8001`)
+- You need the battery's **static IP address** and **TCP port** 8080
 
 ---
 
@@ -54,8 +52,8 @@ A Home Assistant custom integration that provides **direct local TCP control** o
 ## 🚀 Configuration
 
 1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for **Sunpura Battery**
-3. Enter your battery's **IP address**, **TCP port**, and a **friendly name**
+2. Search for **Sunpura Battery (Local TPC)**
+3. Enter your battery's **IP address**, **TCP port** 8080, and a **friendly name**
 
 > You can update the IP/port at any time via the integration's **Configure** button — Home Assistant will reconnect immediately.
 
@@ -66,8 +64,6 @@ A Home Assistant custom integration that provides **direct local TCP control** o
 | Entity | Type | Description |
 |---|---|---|
 | `Power Setpoint` | Number | Charge (+W) or discharge (−W) power target |
-| `Work Mode` | Select | Self-Consumption (AI) / Custom / Disabled |
-| `EMS Enabled` | Switch | Master enable for the EMS controller |
 | `AC Charging Power` | Sensor | Current AC charging power in W |
 | `Battery Discharging Power` | Sensor | Current discharge power in W |
 | `Battery SOC` | Sensor | State of charge in % |
@@ -150,8 +146,7 @@ Internally the register sign is **inverted** (negative = charge) — the integra
 - Check Home Assistant logs for connection errors
 
 **Power setpoint has no effect**
-- Ensure **Work Mode** is set to `Custom / Manual`
-- Ensure **EMS Enabled** switch is ON
+- Ensure **Work Mode** is set to `Custom / Manual` in the Sunpura app
 - Use `sunpura_local.scan_power_registers` to confirm register 3003 is being written
 
 **Slow response after setting power**
