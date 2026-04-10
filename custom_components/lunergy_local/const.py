@@ -12,7 +12,7 @@ DEFAULT_HOST = "192.168.0.1"
 DEFAULT_PORT = 8080
 DEFAULT_NAME = "Lunergy Battery"
 DEFAULT_TIMEOUT = 5  # seconds
-POLL_INTERVAL = 2           # seconds – change this to update faster/slower
+POLL_INTERVAL = 5           # seconds – change this to update faster/slower
 MIN_POLL_INTERVAL = 2       # seconds – hard floor to avoid flooding the device
 MAX_BATTERY_POWER_W = 2400  # watts  – rated max charge/discharge of your battery
 

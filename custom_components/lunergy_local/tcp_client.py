@@ -73,8 +73,9 @@ class LunergyBatteryClient:
                 await writer.drain()
                 return await self._read_json(reader)
             except (ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
-                _LOGGER.warning("GET connection error: %s", exc)
+                _LOGGER.warning("GET connection error: %s — reconnecting after 2s cooldown", exc)
                 self._connected = False
+                await asyncio.sleep(2)
                 await self._manager.reconnect()
                 return None
             except Exception as exc:
@@ -97,8 +98,9 @@ class LunergyBatteryClient:
                 await writer.drain()
                 return {"sent": True}
             except (ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
-                _LOGGER.warning("SET connection error: %s", exc)
+                _LOGGER.warning("SET connection error: %s — reconnecting after 2s cooldown", exc)
                 self._connected = False
+                await asyncio.sleep(2)
                 await self._manager.reconnect()
                 return None
             except Exception as exc:
