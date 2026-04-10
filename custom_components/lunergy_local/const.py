@@ -6,6 +6,7 @@ DOMAIN = "lunergy_local"
 CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_NAME = "name"
+CONF_EXTENDED_POWER = "extended_power"
 
 # Default connection values
 DEFAULT_HOST = "192.168.0.1"
@@ -14,7 +15,8 @@ DEFAULT_NAME = "Lunergy Battery"
 DEFAULT_TIMEOUT = 5  # seconds
 POLL_INTERVAL = 5           # seconds – change this to update faster/slower
 MIN_POLL_INTERVAL = 2       # seconds – hard floor to avoid flooding the device
-MAX_BATTERY_POWER_W = 2400  # watts  – rated max charge/discharge of your battery
+MAX_BATTERY_POWER_W = 2400       # watts – hardware rated max
+MAX_REGISTER_POWER_DEFAULT = 800   # watts – default local TCP limit without extended power
 
 # ─── Control register addresses (confirmed by register scan) ─────────────────
 REG_EMS_ENABLE      = "3000"   # 0 = off, 1 = on

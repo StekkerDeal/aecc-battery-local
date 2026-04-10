@@ -11,8 +11,9 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    DOMAIN, POLL_INTERVAL, MIN_POLL_INTERVAL, MAX_BATTERY_POWER_W,
-    MODE_REGISTERS, REG_MIN_SOC, REG_MAX_SOC,
+    DOMAIN, POLL_INTERVAL, MIN_POLL_INTERVAL,
+    MAX_BATTERY_POWER_W, MAX_REGISTER_POWER_DEFAULT,
+    REG_MAX_FEED_POWER, MODE_REGISTERS, REG_MIN_SOC, REG_MAX_SOC,
 )
 from .tcp_client import LunergyBatteryClient
 
@@ -89,7 +90,8 @@ _DISCHARGING_SOC = 10
 class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
     def __init__(self, hass: HomeAssistant, client: LunergyBatteryClient,
-                 device_name: str, poll_interval: int = POLL_INTERVAL) -> None:
+                 device_name: str, poll_interval: int = POLL_INTERVAL,
+                 extended_power: bool = False) -> None:
         self.client = client
         self.device_name = device_name
         self._last_set_response: Any = "never sent"
@@ -100,6 +102,10 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self.firmware_version: str | None = None
         self._commanded_power: int = 0
         self._commanded_direction: str = "Idle"
+        self.extended_power: bool = extended_power
+        self.max_register_power: int = (
+            MAX_BATTERY_POWER_W if extended_power else MAX_REGISTER_POWER_DEFAULT
+        )
         self.initial_min_soc: int | None = None
         self.initial_max_soc: int | None = None
         self.initial_work_mode: str | None = None
@@ -234,6 +240,18 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             "3030": "1",      # Custom mode ON
             "3003": slot1,    # Schedule slot
         }
+
+        # Write register 3039 (maxFeedPower) to unlock power above 800W.
+        # Without this, the firmware clamps local TCP power writes to 800W.
+        if self.extended_power:
+            payload[REG_MAX_FEED_POWER] = str(MAX_BATTERY_POWER_W)
+
+        if power_w > MAX_REGISTER_POWER_DEFAULT and not self.extended_power:
+            _LOGGER.warning(
+                "Power %d W exceeds default 800 W limit. "
+                "Enable 'Extended power range' in integration options to allow up to %d W.",
+                power_w, MAX_BATTERY_POWER_W,
+            )
 
         _LOGGER.info(
             "SET battery_control direction=%s power=%d W → 3003=%r",

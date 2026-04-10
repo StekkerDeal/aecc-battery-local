@@ -32,7 +32,11 @@
         "data": {
           "host": "IP Address",
           "port": "TCP Port",
-          "name": "Device Name"
+          "name": "Device Name",
+          "extended_power": "Extended power range (up to 2400W)"
+        },
+        "data_description": {
+          "extended_power": "By default, local control is limited to 800W. Enable this to allow power up to 2400W by writing register 3039. This is the same setting the AECC app uses when you configure power above 800W."
         }
       }
     },

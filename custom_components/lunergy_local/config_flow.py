@@ -14,6 +14,7 @@ from .const import (
     CONF_HOST,
     CONF_NAME,
     CONF_PORT,
+    CONF_EXTENDED_POWER,
     DEFAULT_HOST,
     DEFAULT_NAME,
     DEFAULT_PORT,
@@ -87,16 +88,21 @@ class LunergyLocalOptionsFlow(config_entries.OptionsFlow):
                     CONF_PORT: user_input[CONF_PORT],
                     CONF_NAME: user_input[CONF_NAME].strip(),
                 },
+                options={
+                    CONF_EXTENDED_POWER: user_input.get(CONF_EXTENDED_POWER, False),
+                },
             )
             await self.hass.config_entries.async_reload(self._entry.entry_id)
             return self.async_create_entry(title="", data={})
 
         current = self._entry.data
+        current_options = self._entry.options
         schema = vol.Schema(
             {
                 vol.Required(CONF_HOST, default=current.get(CONF_HOST, DEFAULT_HOST)): str,
                 vol.Required(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): vol.Coerce(int),
                 vol.Required(CONF_NAME, default=current.get(CONF_NAME, DEFAULT_NAME)): str,
+                vol.Optional(CONF_EXTENDED_POWER, default=current_options.get(CONF_EXTENDED_POWER, False)): bool,
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

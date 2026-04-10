@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .const import DOMAIN, MAX_BATTERY_POWER_W
+from .const import DOMAIN
 from .coordinator import LunergyLocalCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,14 +25,13 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry,
 
 
 class LunergyPowerSlider(CoordinatorEntity[LunergyLocalCoordinator], NumberEntity):
-    """Battery power slider: 0–2400 W. Direction is set via the Battery Direction select."""
+    """Battery power slider. Max depends on extended power setting (800W or 2400W)."""
     _attr_has_entity_name = True
     _attr_name = "Battery Power"
     _attr_icon = "mdi:battery-sync"
     _attr_device_class = NumberDeviceClass.POWER
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_native_min_value = 0
-    _attr_native_max_value = MAX_BATTERY_POWER_W
     _attr_native_step = 100
     _attr_mode = NumberMode.SLIDER
 
@@ -40,6 +39,7 @@ class LunergyPowerSlider(CoordinatorEntity[LunergyLocalCoordinator], NumberEntit
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_power_setpoint"
+        self._attr_native_max_value = coordinator.max_register_power
         self._commanded: float = coordinator.initial_power if coordinator.initial_power is not None else 0
 
     @property

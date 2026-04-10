@@ -15,7 +15,7 @@ Based on the AECC platform protocol, compatible with Lunergy, Sunpura, and other
 - **Local-only** — communicates directly with your battery over your LAN
 - **Fast polling** — 5-second update interval with intelligent failure tolerance
 - **Energy Dashboard ready** — accumulated kWh sensors for the built-in Home Assistant Energy Dashboard
-- **Battery control** — direction select (Charge/Discharge/Idle) with power slider (0-2400 W)
+- **Battery control** — direction select (Charge/Discharge/Idle) with power slider (0-800 W, extendable to 2400 W)
 - **SOC limits** — set minimum discharge and maximum charge percentages
 - **Battery sensors** — SOC, signed battery power, status, AC charging, PV, grid, backup, home consumption
 - **Work mode selector** — switch between Self-Consumption (AI), Custom/Manual, and Disabled
@@ -59,6 +59,18 @@ Based on the AECC platform protocol, compatible with Lunergy, Sunpura, and other
 
 > You can update the IP/port at any time via the integration's **Configure** button — Home Assistant will reconnect immediately.
 
+### Extended Power Range
+
+By default, local TCP control is limited to **800 W**. This is not a hardware limit; the battery hardware supports up to 2400 W. The 800 W default exists because the battery's firmware requires register 3039 (maxFeedPower) to be set before accepting higher power values on register 3003.
+
+To unlock the full 2400 W range:
+
+1. Go to the integration's **Configure** button
+2. Enable **Extended power range (up to 2400W)**
+3. The power slider will increase from 0-800 W to 0-2400 W
+
+When enabled, the integration automatically writes register 3039 alongside every power command. This is the same mechanism the official AECC app uses when you configure power above 800 W.
+
 ---
 
 ## Entities
@@ -87,7 +99,7 @@ Based on the AECC platform protocol, compatible with Lunergy, Sunpura, and other
 | Entity | Type | Description |
 |---|---|---|
 | `Battery Direction` | Select | Charge, Discharge, or Idle |
-| `Battery Power` | Number (slider) | Power target: 0-2400 W |
+| `Battery Power` | Number (slider) | Power target: 0-800 W (or 0-2400 W with extended power) |
 | `Discharge Limit` | Number (slider) | Minimum SOC before discharging stops (5-50%) |
 | `Charge Limit` | Number (slider) | Maximum SOC before charging stops (50-100%) |
 | `Work Mode` | Select | Self-Consumption (AI), Custom/Manual, Disabled |
@@ -125,7 +137,7 @@ The energy sensors are `total_increasing` and persist across Home Assistant rest
 The battery is controlled with two entities working together:
 
 1. **Battery Direction** (select) — sets *what* the battery does: Charge, Discharge, or Idle
-2. **Battery Power** (slider) — sets *how much* power to use: 0-2400 W
+2. **Battery Power** (slider) — sets *how much* power to use: 0-800 W (or 0-2400 W with extended power enabled)
 
 When you select a direction, the integration automatically switches the battery to Custom mode and writes the appropriate schedule register. Setting direction to Idle stops the battery.
 
@@ -192,7 +204,7 @@ Other AECC-based brands (same protocol, different branding) may also work. If yo
 | `3023` | Min discharge SOC (%) | Yes, 10% |
 | `3024` | Max charge SOC (%) | Yes, 98% |
 | `3030` | Custom mode (0=off, 1=on) | Yes |
-| `3039` | Max feed power (W) | Yes, 2400 W |
+| `3039` | Max feed power (W) — gates local power cap | Yes, 2400 W |
 
 ---
 
