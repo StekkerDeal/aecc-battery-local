@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 import logging
 from typing import Any, Dict, List, Tuple
 
@@ -83,11 +83,6 @@ _FIELD_MAP: Dict[str, List[Tuple[str, str, float]]] = {
 _SLOT_DISABLED   = "0,00:00,00:00,0,0,0,0,0,0,100,10"
 _CHARGING_SOC    = 100
 _DISCHARGING_SOC = 10
-
-
-def _now_hhmm() -> str:
-    """Return the current local time as HH:MM."""
-    return datetime.now().strftime("%H:%M")
 
 
 class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
@@ -199,8 +194,6 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         power_w = int(watts)
         reg_power = -power_w
 
-        start_time = _now_hhmm()
-
         # Auto-detect firmware variant from poll data:
         #   Storage_list present → Sunpura (field7=5)
         #   Only SSumInfoList   → Lunergy (field7=4)
@@ -226,26 +219,19 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             "3003": slot1,    # Schedule slot
         }
 
-        _LOGGER.warning(
-            "Lunergy SET power %+d W → reg_power=%+d → 3003=%r  (full payload: %s)",
-            power_w, reg_power, slot1, payload,
+        _LOGGER.info(
+            "SET power %+d W → reg_power=%+d → 3003=%r",
+            power_w, reg_power, slot1,
         )
 
         resp = await self.client.set_control_parameters(payload)
         self._last_set_response = resp
 
         if resp is None:
-            _LOGGER.warning("Lunergy SET power → no response (connection error)")
+            _LOGGER.warning("SET power %+d W failed — no response from battery", power_w)
             return False
 
-        _LOGGER.warning("Lunergy SET power → response: %s", resp)
-
-        # Verification: read back registers to confirm they persisted
-        verify = await self.client.get_control_parameters(
-            [3000, 3003, 3020, 3021, 3022, 3030]
-        )
-        _LOGGER.warning("Lunergy VERIFY registers after SET: %s", verify)
-
+        _LOGGER.debug("SET power response: %s", resp)
         return True
 
     # ── Work mode & SOC ────────────────────────────────────────────────────────
@@ -253,12 +239,13 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     async def async_set_work_mode(self, mode: str) -> bool:
         registers = MODE_REGISTERS.get(mode)
         if registers is None:
-            _LOGGER.warning("Lunergy SET work_mode: unknown mode %r", mode)
+            _LOGGER.warning("SET work_mode: unknown mode %r", mode)
             return False
-        _LOGGER.warning("Lunergy SET work_mode %r → registers=%s", mode, registers)
+        _LOGGER.info("SET work_mode %r → registers=%s", mode, registers)
         resp = await self.client.set_control_parameters(registers)
         self._last_set_response = resp
-        _LOGGER.warning("Lunergy SET work_mode → response: %s", resp)
+        if resp is None:
+            _LOGGER.warning("SET work_mode %r failed — no response", mode)
         return resp is not None
 
     async def async_set_min_soc(self, value: int) -> bool:

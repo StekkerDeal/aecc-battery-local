@@ -90,7 +90,7 @@ class LunergyBatteryClient:
             "CommandSource": "HA",
             **(extra or {}),
         }
-        _LOGGER.warning("TX SET → %s", json.dumps(payload))
+        _LOGGER.debug("TX SET → %s", json.dumps(payload))
         async with self._io_lock:
             try:
                 reader, writer = await self._manager.get_reader_writer()
@@ -98,7 +98,7 @@ class LunergyBatteryClient:
                 writer.write((json.dumps(payload) + "\n").encode("utf-8"))
                 await writer.drain()
                 response = await self._read_json(reader)
-                _LOGGER.warning("RX SET ← %s", response)
+                _LOGGER.debug("RX SET ← %s", response)
                 return response
             except (ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
                 _LOGGER.warning("SET connection error: %s — reconnecting after 2s cooldown", exc)

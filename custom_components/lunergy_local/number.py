@@ -64,11 +64,9 @@ class LunergyPowerSetpoint(CoordinatorEntity[LunergyLocalCoordinator], NumberEnt
         return attrs
 
     async def async_set_native_value(self, value: float) -> None:
-        _LOGGER.warning("Lunergy number entity: user set power to %s W", value)
         success = await self.coordinator.async_set_power_setpoint(value)
         if success:
             self._commanded = value
             self.async_write_ha_state()
-            _LOGGER.warning("Lunergy power setpoint %s W applied successfully", value)
         else:
-            _LOGGER.warning("Lunergy power setpoint %s W FAILED — no response from battery", value)
+            _LOGGER.warning("Failed to set power setpoint to %s W", value)
