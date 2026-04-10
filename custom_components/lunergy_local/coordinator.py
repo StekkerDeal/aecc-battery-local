@@ -201,17 +201,25 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
         start_time = _now_hhmm()
 
+        # Auto-detect firmware variant from poll data:
+        #   Storage_list present → Sunpura (field7=5)
+        #   Only SSumInfoList   → Lunergy (field7=4)
+        has_storage = bool(self.data and self.data.get("Storage_list"))
+        field7 = 5 if has_storage else 4
+
         if power_w == 0:
             slot1 = _SLOT_DISABLED
         else:
+            # Slot format: switch,start,end,power,temp,mode,field7,0,0,chargingSOC,dischargingSOC
             slot1 = (
-                f"1,{start_time},23:59,{reg_power},0,6,0,0,0,"
+                f"1,00:00,23:59,{reg_power},0,6,{field7},0,0,"
                 f"{_CHARGING_SOC},{_DISCHARGING_SOC}"
             )
 
-        # Ensure custom mode is active: EMS on, AI off, custom on
+        # Ensure custom mode is fully active
         payload = {
             "3000": "1",      # EMS enable
+            "3020": "6",      # Energy mode = custom/manual
             "3021": "0",      # AI smart charge OFF
             "3022": "0",      # AI smart discharge OFF
             "3030": "1",      # Custom mode ON
@@ -231,6 +239,13 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             return False
 
         _LOGGER.warning("Lunergy SET power → response: %s", resp)
+
+        # Verification: read back registers to confirm they persisted
+        verify = await self.client.get_control_parameters(
+            [3000, 3003, 3020, 3021, 3022, 3030]
+        )
+        _LOGGER.warning("Lunergy VERIFY registers after SET: %s", verify)
+
         return True
 
     # ── Work mode & SOC ────────────────────────────────────────────────────────
