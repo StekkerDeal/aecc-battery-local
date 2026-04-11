@@ -51,8 +51,8 @@ _FIELD_MAP: Dict[str, List[Tuple[str, str, float]]] = {
         ("summary", "TotalPVChargePower", 1.0),
     ],
     "grid_power": [
-        ("storage", "AcInActivePower", 0.1),
         ("summary", "MeterTotalActivePower", 1.0),
+        ("storage", "AcInActivePower", 0.1),
     ],
     "grid_export_power": [],  # Derived in sensor from grid_power (positive values only)
     "backup_power": [
