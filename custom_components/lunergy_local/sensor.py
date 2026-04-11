@@ -204,8 +204,8 @@ class LunergyGridExportSensor(CoordinatorEntity[LunergyLocalCoordinator], Sensor
         if grid is None:
             return None
         try:
-            # AECC sign convention: negative = importing, positive = exporting
-            return max(0, round(float(grid), 1))
+            # AECC sign convention: positive = importing, negative = exporting
+            return max(0, round(-float(grid), 1))
         except (TypeError, ValueError):
             return None
 
