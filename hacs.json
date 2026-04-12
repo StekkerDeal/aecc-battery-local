@@ -1,5 +1,4 @@
 {
   "name": "AECC Battery (Local TCP)",
-  "homeassistant": "2024.1.0",
-  "iot_class": "local_polling"
+  "homeassistant": "2024.1.0"
 }
