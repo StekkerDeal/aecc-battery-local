@@ -142,10 +142,6 @@ class AeccMaxSoc(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
     def native_value(self) -> float:
         return self._commanded
 
-    @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success or self._commanded is not None
-
     async def async_set_native_value(self, value: float) -> None:
         soc = int(value)
         success = await self.coordinator.async_set_max_soc(soc)

@@ -15,7 +15,10 @@ from .const import (
     MAX_BATTERY_POWER_W,
     MAX_REGISTER_POWER_DEFAULT,
     MIN_POLL_INTERVAL,
+    MODE_CUSTOM,
+    MODE_DISABLED,
     MODE_REGISTERS,
+    MODE_SELF_CONSUMPTION,
     POLL_INTERVAL,
     REG_AI_SMART_CHARGE,
     REG_AI_SMART_DISC,
@@ -23,6 +26,8 @@ from .const import (
     REG_CUSTOM_MODE,
     REG_EMS_ENABLE,
     REG_MAX_FEED_POWER,
+    REG_MAX_SOC,
+    REG_MIN_SOC,
     REG_SCHEDULE_MODE,
 )
 from .tcp_client import AeccTcpClient
@@ -298,18 +303,28 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_set_min_soc(self, value: int) -> bool:
         self._commanded_min_soc = value
-        resp = await self.client.set_control_parameters({"3023": str(value)})
+        resp = await self.client.set_control_parameters({REG_MIN_SOC: str(value)})
 
         return resp is not None
 
     async def async_set_max_soc(self, value: int) -> bool:
         self._commanded_max_soc = value
-        resp = await self.client.set_control_parameters({"3024": str(value)})
+        resp = await self.client.set_control_parameters({REG_MAX_SOC: str(value)})
 
         return resp is not None
 
     async def async_read_initial_state(self) -> None:
-        resp = await self.client.get_control_parameters([3000, 3003, 3021, 3022, 3023, 3024, 3030])
+        resp = await self.client.get_control_parameters(
+            [
+                int(REG_EMS_ENABLE),
+                int(REG_CONTROL_TIME1),
+                int(REG_AI_SMART_CHARGE),
+                int(REG_AI_SMART_DISC),
+                int(REG_MIN_SOC),
+                int(REG_MAX_SOC),
+                int(REG_CUSTOM_MODE),
+            ]
+        )
         if resp is None:
             return
         params = resp.get("ControlInfo") or resp.get("GetParameters") or resp.get("Parameters") or {}
@@ -325,12 +340,12 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except (TypeError, ValueError):
                 return None
 
-        min_soc = _int("3023")
-        max_soc = _int("3024")
-        ems_on = _int("3000")
-        ai_charge = _int("3021")
-        ai_discharge = _int("3022")
-        custom_mode = _int("3030")
+        min_soc = _int(REG_MIN_SOC)
+        max_soc = _int(REG_MAX_SOC)
+        ems_on = _int(REG_EMS_ENABLE)
+        ai_charge = _int(REG_AI_SMART_CHARGE)
+        ai_discharge = _int(REG_AI_SMART_DISC)
+        custom_mode = _int(REG_CUSTOM_MODE)
 
         if min_soc is not None:
             self.initial_min_soc = min_soc
@@ -341,7 +356,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._commanded_max_soc = max_soc
             _LOGGER.info("Read initial max SOC: %d%%", max_soc)
 
-        slot_str = params.get("3003") or params.get(3003)
+        slot_str = params.get(REG_CONTROL_TIME1) or params.get(int(REG_CONTROL_TIME1))
         if slot_str and isinstance(slot_str, str):
             try:
                 parts = slot_str.split(",")
@@ -352,8 +367,6 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.info("Read initial power: %d W (register value: %d)", self.initial_power, reg_power)
             except (ValueError, IndexError):
                 pass
-
-        from .const import MODE_CUSTOM, MODE_DISABLED, MODE_SELF_CONSUMPTION
 
         if ems_on == 0:
             self.initial_work_mode = MODE_DISABLED
