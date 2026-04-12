@@ -1,0 +1,12 @@
+{
+  "domain": "aecc_battery",
+  "name": "AECC Battery (Local TCP)",
+  "codeowners": ["@StekkerDeal"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/StekkerDeal/aecc-battery-local",
+  "iot_class": "local_polling",
+  "quality_scale": "bronze",
+  "requirements": [],
+  "version": "1.0.0"
+}

@@ -1,8 +1,9 @@
 """Persistent TCP connection manager for AECC battery devices."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
-from typing import Dict, Optional, Tuple
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -14,14 +15,14 @@ class TCPClientManager:
     host/port always reuse the same underlying socket.
     """
 
-    _connections: Dict[Tuple[str, int], "TCPClientManager"] = {}
+    _connections: dict[tuple[str, int], TCPClientManager] = {}
 
     def __init__(self, host: str, port: int, timeout: float = 5.0) -> None:
         self.host = host
         self.port = port
         self.timeout = timeout
-        self.reader: Optional[asyncio.StreamReader] = None
-        self.writer: Optional[asyncio.StreamWriter] = None
+        self.reader: asyncio.StreamReader | None = None
+        self.writer: asyncio.StreamWriter | None = None
         self._lock = asyncio.Lock()
 
     # ── Factory ──────────────────────────────────────────────────────────────
@@ -29,7 +30,7 @@ class TCPClientManager:
     @classmethod
     def get_instance(
         cls, host: str, port: int, timeout: float = 5.0
-    ) -> "TCPClientManager":
+    ) -> TCPClientManager:
         key = (host, port)
         if key not in cls._connections:
             cls._connections[key] = TCPClientManager(host, port, timeout)
@@ -43,7 +44,7 @@ class TCPClientManager:
 
     async def get_reader_writer(
         self,
-    ) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
         async with self._lock:
             if not self.writer or self.writer.is_closing():
                 await self._connect()

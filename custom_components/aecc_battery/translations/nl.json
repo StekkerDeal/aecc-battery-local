@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Verbind met AECC batterij",
+        "description": "Vul de netwerkgegevens in van je AECC-platform thuisbatterij. De batterij moet bereikbaar zijn op het opgegeven IP-adres.",
+        "data": {
+          "host": "IP-adres",
+          "port": "TCP-poort",
+          "name": "Apparaatnaam",
+          "manufacturer": "Batterijmerk",
+          "model": "Model (optioneel)"
+        },
+        "data_description": {
+          "host": "Vast lokaal IP-adres van je batterij (bijv. 192.168.0.100)",
+          "port": "TCP-poort waarop de batterij luistert (standaard 8080)",
+          "name": "Naam zoals weergegeven in Home Assistant",
+          "manufacturer": "Selecteer het merk van je batterij",
+          "model": "Modelnaam (bijv. Hub 2400 AC, S2400, SR)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan niet verbinden. Controleer het IP-adres, de poort en of de batterij online is.",
+      "unknown": "Onverwachte fout. Zie het Home Assistant-logboek voor details."
+    },
+    "abort": {
+      "already_configured": "Deze batterij (host:poort) is al geconfigureerd."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "AECC batterij herconfigureren",
+        "description": "Wijzig de verbindingsgegevens. Home Assistant maakt direct opnieuw verbinding.",
+        "data": {
+          "host": "IP-adres",
+          "port": "TCP-poort",
+          "name": "Apparaatnaam",
+          "manufacturer": "Batterijmerk",
+          "model": "Model (optioneel)",
+          "extended_power": "Uitgebreid vermogensbereik (tot 2400W)"
+        },
+        "data_description": {
+          "extended_power": "Standaard is lokale besturing beperkt tot 800W. Schakel dit in om vermogen tot 2400W toe te staan via register 3039. Dit is dezelfde instelling die de AECC-app gebruikt."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan niet verbinden. Controleer het IP-adres, de poort en of de batterij online is.",
+      "unknown": "Onverwachte fout. Zie het Home Assistant-logboek voor details."
+    }
+  }
+}

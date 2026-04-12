@@ -1,4 +1,4 @@
-"""Number platform – Power Slider, Min SOC, Max SOC."""
+"""Number platform - Power Slider, Min SOC, Max SOC."""
 from __future__ import annotations
 import logging
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
@@ -9,22 +9,22 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
-from .coordinator import LunergyLocalCoordinator
+from .coordinator import AeccBatteryCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
-    coordinator: LunergyLocalCoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: AeccBatteryCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     async_add_entities([
-        LunergyPowerSlider(coordinator, config_entry),
-        LunergyMinSoc(coordinator, config_entry),
-        LunergyMaxSoc(coordinator, config_entry),
+        AeccPowerSlider(coordinator, config_entry),
+        AeccMinSoc(coordinator, config_entry),
+        AeccMaxSoc(coordinator, config_entry),
     ])
 
 
-class LunergyPowerSlider(CoordinatorEntity[LunergyLocalCoordinator], NumberEntity):
+class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
     """Battery power slider. Max depends on extended power setting (800W or 2400W)."""
     _attr_has_entity_name = True
     _attr_name = "Battery Power"
@@ -35,7 +35,7 @@ class LunergyPowerSlider(CoordinatorEntity[LunergyLocalCoordinator], NumberEntit
     _attr_native_step = 100
     _attr_mode = NumberMode.SLIDER
 
-    def __init__(self, coordinator, config_entry):
+    def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_power_setpoint"
@@ -57,11 +57,9 @@ class LunergyPowerSlider(CoordinatorEntity[LunergyLocalCoordinator], NumberEntit
     async def async_set_native_value(self, value: float) -> None:
         power_w = int(value)
         self._commanded = power_w
-        # Store on coordinator so direction select can read it
-        self.coordinator._commanded_power = power_w
+        self.coordinator.commanded_power = power_w
 
-        # Get current direction from coordinator
-        direction = getattr(self.coordinator, "_commanded_direction", "Idle")
+        direction = self.coordinator.commanded_direction
         if direction == "Idle" and power_w > 0:
             direction = "Charge"
 
@@ -72,7 +70,7 @@ class LunergyPowerSlider(CoordinatorEntity[LunergyLocalCoordinator], NumberEntit
             _LOGGER.warning("Failed to set power to %s W", power_w)
 
 
-class LunergyMinSoc(CoordinatorEntity[LunergyLocalCoordinator], NumberEntity):
+class AeccMinSoc(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
     """Minimum discharge SOC (register 3023)."""
     _attr_has_entity_name = True
     _attr_name = "Discharge Limit"
@@ -84,7 +82,7 @@ class LunergyMinSoc(CoordinatorEntity[LunergyLocalCoordinator], NumberEntity):
     _attr_native_step = 5
     _attr_mode = NumberMode.SLIDER
 
-    def __init__(self, coordinator, config_entry):
+    def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_min_soc"
@@ -108,7 +106,7 @@ class LunergyMinSoc(CoordinatorEntity[LunergyLocalCoordinator], NumberEntity):
             _LOGGER.warning("Failed to set min SOC to %s%%", soc)
 
 
-class LunergyMaxSoc(CoordinatorEntity[LunergyLocalCoordinator], NumberEntity):
+class AeccMaxSoc(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
     """Maximum charge SOC (register 3024)."""
     _attr_has_entity_name = True
     _attr_name = "Charge Limit"
@@ -120,7 +118,7 @@ class LunergyMaxSoc(CoordinatorEntity[LunergyLocalCoordinator], NumberEntity):
     _attr_native_step = 5
     _attr_mode = NumberMode.SLIDER
 
-    def __init__(self, coordinator, config_entry):
+    def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_max_soc"

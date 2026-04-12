@@ -1,10 +1,10 @@
-"""DataUpdateCoordinator for the Lunergy Local Battery integration."""
+"""DataUpdateCoordinator for the AECC Battery (Local TCP) integration."""
 
 from __future__ import annotations
 
 from datetime import timedelta
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
@@ -13,9 +13,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     DOMAIN, POLL_INTERVAL, MIN_POLL_INTERVAL,
     MAX_BATTERY_POWER_W, MAX_REGISTER_POWER_DEFAULT,
-    REG_MAX_FEED_POWER, MODE_REGISTERS, REG_MIN_SOC, REG_MAX_SOC,
+    REG_EMS_ENABLE, REG_SCHEDULE_MODE, REG_AI_SMART_CHARGE,
+    REG_AI_SMART_DISC, REG_CUSTOM_MODE, REG_CONTROL_TIME1,
+    REG_MAX_FEED_POWER, REG_MIN_SOC, REG_MAX_SOC, MODE_REGISTERS,
 )
-from .tcp_client import LunergyBatteryClient
+from .tcp_client import AeccTcpClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 # Storage_list power values are 10x scaled; SSumInfoList values are in watts.
 # ──────────────────────────────────────────────────────────────────────────────
 
-_FIELD_MAP: Dict[str, List[Tuple[str, str, float]]] = {
+_FIELD_MAP: dict[str, list[tuple[str, str, float]]] = {
     "battery_soc": [
         ("storage", "BatterySoc", 1.0),
         ("summary", "AverageBatteryAverageSOC", 1.0),
@@ -67,37 +69,23 @@ _FIELD_MAP: Dict[str, List[Tuple[str, str, float]]] = {
     ],
 }
 
-# ── Register map (confirmed from live scan) ───────────────────────────────────
-# 3000  EMS enable           1 = on
-# 3003  controlTime1         active power schedule slot  ← we write here
-# 3023  min discharge SOC    (10 %)
-# 3024  max charge SOC       (98 %)
-# 3030  custom mode          1 = on
-#
-# Time-slot format (11 fields):
-#   "switch,start,end,power,temp,mode,0,0,0,chargingSOC,dischargingSOC"
-#   e.g. "1,14:02,23:59,-2400,0,6,0,0,0,100,10"
-#
-# SIGN CONVENTION (confirmed empirically and from live cloud behaviour):
-#   register negative → charge    (e.g. -2400 = charge at 2400 W)
-#   register positive → discharge (e.g. +2400 = discharge at 2400 W)
-# ─────────────────────────────────────────────────────────────────────────────
-
 _SLOT_DISABLED   = "0,00:00,00:00,0,0,0,0,0,0,100,10"
 _CHARGING_SOC    = 100
 _DISCHARGING_SOC = 10
 
 
-class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
+class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
-    def __init__(self, hass: HomeAssistant, client: LunergyBatteryClient,
+    def __init__(self, hass: HomeAssistant, client: AeccTcpClient,
                  device_name: str, poll_interval: int = POLL_INTERVAL,
+                 manufacturer: str = "AECC", model: str = "",
                  extended_power: bool = False) -> None:
         self.client = client
         self.device_name = device_name
-        self._last_set_response: Any = "never sent"
+        self._manufacturer = manufacturer
+        self._model = model
         self._consecutive_failures: int = 0
-        self._last_good_data: Dict[str, Any] | None = None
+        self._last_good_data: dict[str, Any] | None = None
         self._failure_tolerance: int = 5
         self.device_serial: str | None = None
         self.firmware_version: str | None = None
@@ -122,7 +110,7 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     async def _async_setup(self) -> None:
         await self.client.async_connect()
 
-    async def _async_update_data(self) -> Dict[str, Any]:
+    async def _async_update_data(self) -> dict[str, Any]:
         raw = await self.client.get_energy_parameters()
 
         valid = (
@@ -135,7 +123,7 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             if (self._consecutive_failures <= self._failure_tolerance
                     and self._last_good_data is not None):
                 _LOGGER.debug(
-                    "Incomplete/missing poll response (%d/%d) — keeping last known data",
+                    "Incomplete/missing poll response (%d/%d) - keeping last known data",
                     self._consecutive_failures, self._failure_tolerance,
                 )
                 return self._last_good_data
@@ -148,31 +136,44 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self._last_good_data = raw
         return raw
 
-    # ── Device info ───────────────────────────────────────────────────────────
+    # ── Public access to commanded state (used by entity platforms) ──────────
+
+    @property
+    def commanded_power(self) -> int:
+        return self._commanded_power
+
+    @commanded_power.setter
+    def commanded_power(self, value: int) -> None:
+        self._commanded_power = value
+
+    @property
+    def commanded_direction(self) -> str:
+        return self._commanded_direction
+
+    @commanded_direction.setter
+    def commanded_direction(self, value: str) -> None:
+        self._commanded_direction = value
 
     @property
     def device_info(self) -> DeviceInfo:
         identifier = self.device_serial or f"{self.client.host}:{self.client.port}"
-        info = DeviceInfo(
+        return DeviceInfo(
             identifiers={(DOMAIN, identifier)},
             name=self.device_name,
-            manufacturer="Lunergy",
-            model="Hub 2400 AC",
+            manufacturer=self._manufacturer,
+            model=self._model or None,
+            sw_version=self.firmware_version,
+            configuration_url="https://stekkerdeal.nl/",
         )
-        if self.firmware_version:
-            info["sw_version"] = self.firmware_version
-        return info
-
-    # ── Accessors ─────────────────────────────────────────────────────────────
 
     @property
-    def storage(self) -> Dict[str, Any]:
+    def storage(self) -> dict[str, Any]:
         if not self.data:
             return {}
         return (self.data.get("Storage_list") or [{}])[0]
 
     @property
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         return self.data.get("SSumInfoList", {}) if self.data else {}
 
     _STORAGE_POWER_KEYS = {
@@ -196,11 +197,6 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         return self.summary.get(key, default)
 
     def get_value(self, canonical_key: str, default: Any = None) -> Any:
-        """Get a sensor value using the canonical key.
-
-        Tries Storage_list first (Sunpura), falls back to SSumInfoList (Lunergy).
-        Applies the correct scaling per source automatically.
-        """
         entries = _FIELD_MAP.get(canonical_key)
         if not entries:
             return default
@@ -214,15 +210,7 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                     continue
         return default
 
-    # ── Battery control (direction + power) ───────────────────────────────────
-
     async def async_set_battery_control(self, direction: str, power_w: int) -> bool:
-        """Write battery control registers for the given direction and power.
-
-        Direction: "Charge", "Discharge", or "Idle".
-        Power: absolute watts (0-2400).
-        """
-        # Auto-detect firmware variant from poll data
         has_storage = bool(self.data and self.data.get("Storage_list"))
         field7 = 5 if has_storage else 4
 
@@ -239,16 +227,14 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             )
 
         payload = {
-            "3000": "1",      # EMS enable
-            "3020": "6",      # Energy mode = custom/manual
-            "3021": "0",      # AI smart charge OFF
-            "3022": "0",      # AI smart discharge OFF
-            "3030": "1",      # Custom mode ON
-            "3003": slot1,    # Schedule slot
+            REG_EMS_ENABLE:      "1",
+            REG_SCHEDULE_MODE:   "6",
+            REG_AI_SMART_CHARGE: "0",
+            REG_AI_SMART_DISC:   "0",
+            REG_CUSTOM_MODE:     "1",
+            REG_CONTROL_TIME1:   slot1,
         }
 
-        # Write register 3039 (maxFeedPower) to unlock power above 800W.
-        # Without this, the firmware clamps local TCP power writes to 800W.
         if self.extended_power:
             payload[REG_MAX_FEED_POWER] = str(MAX_BATTERY_POWER_W)
 
@@ -260,24 +246,21 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             )
 
         _LOGGER.info(
-            "SET battery_control direction=%s power=%d W → 3003=%r",
+            "SET battery_control direction=%s power=%d W -> 3003=%r",
             direction, power_w, slot1,
         )
 
         resp = await self.client.set_control_parameters(payload)
-        self._last_set_response = resp
+
 
         if resp is None:
-            _LOGGER.warning("SET battery_control failed — no response from battery")
+            _LOGGER.warning("SET battery_control failed - no response from battery")
             return False
 
         _LOGGER.debug("SET battery_control response: %s", resp)
         return True
 
-    # ── Legacy power setpoint (kept for automation backward compat) ───────────
-
     async def async_set_power_setpoint(self, watts: float) -> bool:
-        """Write the power setpoint. Thin wrapper around async_set_battery_control."""
         power_w = int(watts)
         if power_w == 0:
             return await self.async_set_battery_control("Idle", 0)
@@ -286,36 +269,31 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         else:
             return await self.async_set_battery_control("Discharge", abs(power_w))
 
-    # ── Work mode & SOC ────────────────────────────────────────────────────────
-
     async def async_set_work_mode(self, mode: str) -> bool:
         registers = MODE_REGISTERS.get(mode)
         if registers is None:
             _LOGGER.warning("SET work_mode: unknown mode %r", mode)
             return False
-        _LOGGER.info("SET work_mode %r → registers=%s", mode, registers)
+        _LOGGER.info("SET work_mode %r -> registers=%s", mode, registers)
         resp = await self.client.set_control_parameters(registers)
-        self._last_set_response = resp
+
         if resp is None:
-            _LOGGER.warning("SET work_mode %r failed — no response", mode)
+            _LOGGER.warning("SET work_mode %r failed - no response", mode)
         return resp is not None
 
     async def async_set_min_soc(self, value: int) -> bool:
         self._commanded_min_soc = value
         resp = await self.client.set_control_parameters({"3023": str(value)})
-        self._last_set_response = resp
+
         return resp is not None
 
     async def async_set_max_soc(self, value: int) -> bool:
         self._commanded_max_soc = value
         resp = await self.client.set_control_parameters({"3024": str(value)})
-        self._last_set_response = resp
+
         return resp is not None
 
-    # ── Initial state read ──────────────────────────────────────────────────
-
     async def async_read_initial_state(self) -> None:
-        """Read current SOC limits and work mode from registers at startup."""
         resp = await self.client.get_control_parameters([3000, 3003, 3021, 3022, 3023, 3024, 3030])
         if resp is None:
             return
@@ -353,23 +331,18 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             self._commanded_max_soc = max_soc
             _LOGGER.info("Read initial max SOC: %d%%", max_soc)
 
-        # Parse power from register 3003 time-slot string
-        # Format: "switch,start,end,power,temp,mode,field7,0,0,chargingSOC,dischargingSOC"
-        # e.g. "1,00:00,23:59,-2400,0,6,5,0,0,100,10"
         slot_str = params.get("3003") or params.get(3003)
         if slot_str and isinstance(slot_str, str):
             try:
                 parts = slot_str.split(",")
                 if len(parts) >= 4 and parts[0] == "1":
                     reg_power = int(parts[3])
-                    # Register sign: negative = charge, positive = discharge
                     self.initial_power = abs(reg_power)
                     self._commanded_power = self.initial_power
                     _LOGGER.info("Read initial power: %d W (register value: %d)", self.initial_power, reg_power)
             except (ValueError, IndexError):
                 pass
 
-        # Derive work mode from register state
         from .const import MODE_SELF_CONSUMPTION, MODE_CUSTOM, MODE_DISABLED
         if ems_on == 0:
             self.initial_work_mode = MODE_DISABLED
@@ -383,13 +356,10 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         if self.initial_work_mode:
             _LOGGER.info("Read initial work mode: %s", self.initial_work_mode)
 
-    # ── DeviceManagement probe ────────────────────────────────────────────────
-
     async def async_probe_device_management(self) -> None:
-        """Try to read serial/firmware via DeviceManagement (works on Sunpura, times out on Lunergy)."""
         info = await self.client.get_device_management_info()
         if info is None:
-            _LOGGER.debug("DeviceManagement probe returned nothing (expected on Lunergy)")
+            _LOGGER.debug("DeviceManagement probe returned nothing (not supported on all AECC devices)")
             return
 
         params = (

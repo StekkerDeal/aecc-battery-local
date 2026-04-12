@@ -1,34 +1,48 @@
-# Lunergy Local TCP Control
+# AECC Battery (Local TCP)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![GitHub release](https://img.shields.io/github/release/slaapyhoofd/Lunergy-Local-TCP.svg)](https://github.com/slaapyhoofd/Lunergy-Local-TCP/releases)
+[![GitHub release](https://img.shields.io/github/release/StekkerDeal/aecc-battery-local.svg)](https://github.com/StekkerDeal/aecc-battery-local/releases)
 ![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen.svg)
 
-A Home Assistant custom integration that provides **direct local TCP control** of Lunergy EMS battery systems — no cloud, no latency, no dependency on external servers.
+A Home Assistant integration for **local TCP control** of AECC-platform home batteries. No cloud, no latency, no external dependencies.
 
-Based on the AECC platform protocol, compatible with Lunergy, Sunpura, and other AECC-based batteries.
+Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, and others.
 
 ---
 
 ## Features
 
-- **Local-only** — communicates directly with your battery over your LAN
-- **Fast polling** — 5-second update interval with intelligent failure tolerance
-- **Energy Dashboard ready** — accumulated kWh sensors for the built-in Home Assistant Energy Dashboard
-- **Battery control** — direction select (Charge/Discharge/Idle) with power slider (0-800 W, extendable to 2400 W)
-- **SOC limits** — set minimum discharge and maximum charge percentages
-- **Battery sensors** — SOC, signed battery power, status, AC charging, PV, grid, backup, home consumption
-- **Work mode selector** — switch between Self-Consumption (AI), Custom/Manual, and Disabled
-- **EMS switch** — master enable/disable for the energy management system
-- **Device info** — automatic serial number and firmware detection (Sunpura; graceful fallback on Lunergy)
+- **100% local** — communicates directly with your battery over TCP (port 8080)
+- **5-second polling** — near real-time updates with intelligent failure tolerance
+- **Energy Dashboard ready** — accumulated kWh sensors (`total_increasing`) for the HA Energy Dashboard
+- **Full battery control** — direction (Charge/Discharge/Idle), power slider (0-800W, extendable to 2400W), SOC limits
+- **Work mode selector** — Self-Consumption (AI), Custom/Manual, Disabled
+- **Multi-brand** — select your brand during setup; DeviceInfo shows correct manufacturer and model
+- **Multi-language** — English, Dutch, German, French
+
+---
+
+## Supported Brands
+
+This integration works with batteries built on the AECC platform (ai-ec.cloud). The AECC platform is white-labeled by multiple battery brands that share the same local TCP protocol.
+
+| Brand | Status | Data Format |
+|---|---|---|
+| **Lunergy** (Hub 2400 AC) | Tested | SSumInfoList |
+| **Sunpura** (S2400) | Tested | Storage_list + SSumInfoList |
+| **Voltdeer** (SR) | Expected compatible | Untested |
+| **AEG** (Solarcube) | Expected compatible | Untested |
+| Other AECC brands | May work | Please report |
+
+If your battery uses the AECC app (or a white-labeled version), connects to an `ai-ec.cloud` server, and has TCP port 8080 open on your local network, this integration should work.
 
 ---
 
 ## Requirements
 
 - Home Assistant **2024.1.0** or newer
-- Your Lunergy battery must be on the **same local network** as Home Assistant
-- You need the battery's **static IP address** and **TCP port** (typically 8080)
+- Battery on the **same local network** as Home Assistant
+- Battery's **static IP address** and **TCP port** (typically 8080)
 
 ---
 
@@ -37,16 +51,16 @@ Based on the AECC platform protocol, compatible with Lunergy, Sunpura, and other
 1. Open **HACS** in Home Assistant
 2. Go to **Integrations**
 3. Click the three-dot menu > **Custom repositories**
-4. Add `https://github.com/slaapyhoofd/Lunergy-Local-TCP` as an **Integration**
-5. Search for **Lunergy** and click **Download**
+4. Add `https://github.com/StekkerDeal/aecc-battery-local` as an **Integration**
+5. Search for **AECC Battery** and click **Download**
 6. Restart Home Assistant
 
 ---
 
 ## Manual Installation
 
-1. Download the latest release from [GitHub Releases](https://github.com/slaapyhoofd/Lunergy-Local-TCP/releases)
-2. Copy the `custom_components/lunergy_local` folder into your Home Assistant `config/custom_components/` directory
+1. Download the latest release from [GitHub Releases](https://github.com/StekkerDeal/aecc-battery-local/releases)
+2. Copy the `custom_components/aecc_battery` folder into your Home Assistant `config/custom_components/` directory
 3. Restart Home Assistant
 
 ---
@@ -54,22 +68,24 @@ Based on the AECC platform protocol, compatible with Lunergy, Sunpura, and other
 ## Configuration
 
 1. Go to **Settings > Devices & Services > Add Integration**
-2. Search for **Lunergy Battery (Local TCP)**
+2. Search for **AECC Battery (Local TCP)**
 3. Enter your battery's **IP address**, **TCP port** (default 8080), and a **friendly name**
+4. Select your **battery brand** from the dropdown (Lunergy, Sunpura, Voltdeer, AEG, Other)
+5. Optionally enter the **model name** (e.g. Hub 2400 AC, S2400, SR)
 
-> You can update the IP/port at any time via the integration's **Configure** button — Home Assistant will reconnect immediately.
+You can update all settings at any time via the integration's **Configure** button.
 
 ### Extended Power Range
 
-By default, local TCP control is limited to **800 W**. This is not a hardware limit; the battery hardware supports up to 2400 W. The 800 W default exists because the battery's firmware requires register 3039 (maxFeedPower) to be set before accepting higher power values on register 3003.
+By default, local TCP control is limited to **800W**. The battery hardware supports up to 2400W, but the firmware requires register 3039 (maxFeedPower) to be written before accepting higher values.
 
-To unlock the full 2400 W range:
+To unlock the full 2400W range:
 
 1. Go to the integration's **Configure** button
 2. Enable **Extended power range (up to 2400W)**
-3. The power slider will increase from 0-800 W to 0-2400 W
+3. The power slider increases from 0-800W to 0-2400W
 
-When enabled, the integration automatically writes register 3039 alongside every power command. This is the same mechanism the official AECC app uses when you configure power above 800 W.
+This is the same mechanism the official AECC app uses.
 
 ---
 
@@ -79,54 +95,45 @@ When enabled, the integration automatically writes register 3039 alongside every
 
 | Entity | Type | Description |
 |---|---|---|
-| `Battery SOC` | Sensor (%) | State of charge |
-| `Battery Power` | Sensor (W) | Signed power: positive = charging, negative = discharging |
-| `Battery Status` | Sensor | Text: Charging, Discharging, or Idle |
-| `Energy Charged` | Sensor (kWh) | Accumulated energy charged (AC + PV), `total_increasing` |
-| `Energy Discharged` | Sensor (kWh) | Accumulated energy discharged, `total_increasing` |
-| `AC Charging Power` | Sensor (W) | Current AC charging power |
-| `Battery Discharging Power` | Sensor (W) | Current discharge power |
-| `PV Power` | Sensor (W) | Total solar power |
-| `PV Charging Power` | Sensor (W) | Solar power charging battery |
-| `Grid / Meter Power` | Sensor (W) | Smart meter power |
-| `Grid Export Power` | Sensor (W) | Power exported to grid |
-| `Backup Power` | Sensor (W) | Backup/off-grid load power |
-| `Home Consumption` | Sensor (W) | Total home consumption |
-| `Firmware Version` | Sensor | Diagnostic; only available on Sunpura |
+| Battery SOC | Sensor (%) | State of charge |
+| Battery Power | Sensor (W) | Signed: positive = charging, negative = discharging |
+| Battery Status | Sensor | Charging, Discharging, or Idle |
+| Energy Charged | Sensor (kWh) | Accumulated charge energy (AC + PV), `total_increasing` |
+| Energy Discharged | Sensor (kWh) | Accumulated discharge energy, `total_increasing` |
+| Energy Generated | Sensor (kWh) | Accumulated PV energy, `total_increasing` |
+| AC Charging Power | Sensor (W) | AC grid charging power |
+| Battery Discharging Power | Sensor (W) | Discharge power |
+| PV Power | Sensor (W) | Total solar power |
+| PV Charging Power | Sensor (W) | Solar power charging battery |
+| Grid / Meter Power | Sensor (W) | Smart meter reading |
+| Grid Export Power | Sensor (W) | Power exported to grid |
+| Backup Power | Sensor (W) | Backup/off-grid load power |
+| PV String 1 Power | Sensor (W) | Individual PV string |
+| PV String 2 Power | Sensor (W) | Individual PV string |
+| Firmware Version | Sensor | Diagnostic; available on some AECC devices |
 
 ### Controls
 
 | Entity | Type | Description |
 |---|---|---|
-| `Battery Direction` | Select | Charge, Discharge, or Idle |
-| `Battery Power` | Number (slider) | Power target: 0-800 W (or 0-2400 W with extended power) |
-| `Discharge Limit` | Number (slider) | Minimum SOC before discharging stops (5-50%) |
-| `Charge Limit` | Number (slider) | Maximum SOC before charging stops (50-100%) |
-| `Work Mode` | Select | Self-Consumption (AI), Custom/Manual, Disabled |
-| `EMS Enabled` | Switch | Master on/off for energy management |
+| Battery Direction | Select | Charge, Discharge, or Idle |
+| Battery Power | Number (slider) | Power target: 0-800W (or 0-2400W extended) |
+| Discharge Limit | Number (slider) | Min SOC before discharge stops (5-50%) |
+| Charge Limit | Number (slider) | Max SOC before charging stops (50-100%) |
+| Work Mode | Select | Self-Consumption (AI), Custom/Manual, Disabled |
+| EMS Enabled | Switch | Master on/off for energy management |
 
 ---
 
 ## Energy Dashboard Setup
 
-This integration provides the sensors needed for the Home Assistant Energy Dashboard. The energy sensors use Riemann sum integration to compute kWh locally, since the AECC protocol does not expose cumulative energy counters over TCP.
-
-### How to add battery storage to the Energy Dashboard
-
 1. Go to **Settings > Dashboards > Energy**
-2. In the **Battery Systems** section, click **Add Battery System**
-3. For **Energy going in to the battery**, select `Energy Charged`
-4. For **Energy coming out of the battery**, select `Energy Discharged`
+2. In **Battery Systems**, click **Add Battery System**
+3. **Energy going in**: select `Energy Charged`
+4. **Energy coming out**: select `Energy Discharged`
 5. Click **Save**
 
-The energy sensors are `total_increasing` and persist across Home Assistant restarts (values are restored automatically). They accumulate from zero when first created and increase continuously from there.
-
-### Notes on energy accuracy
-
-- Energy is computed by integrating power over time at each poll interval (default 5 seconds)
-- If the battery is unreachable for more than 60 seconds, the integration skips that time gap to avoid phantom energy spikes
-- For best accuracy, keep the poll interval at 5 seconds (the default)
-- The `Energy Charged` sensor sums both AC and PV charging power, so it captures all charging sources regardless of whether you charge from grid, solar, or both
+Energy sensors use Riemann sum integration (the AECC TCP protocol does not expose cumulative counters). Values persist across restarts.
 
 ---
 
@@ -134,83 +141,61 @@ The energy sensors are `total_increasing` and persist across Home Assistant rest
 
 ### Direction + Power
 
-The battery is controlled with two entities working together:
+Two entities work together:
+- **Battery Direction** (select) — Charge, Discharge, or Idle
+- **Battery Power** (slider) — 0-800W (or 0-2400W with extended power)
 
-1. **Battery Direction** (select) — sets *what* the battery does: Charge, Discharge, or Idle
-2. **Battery Power** (slider) — sets *how much* power to use: 0-800 W (or 0-2400 W with extended power enabled)
+Selecting a direction automatically switches to Custom mode and writes the schedule register.
 
-When you select a direction, the integration automatically switches the battery to Custom mode and writes the appropriate schedule register. Setting direction to Idle stops the battery.
-
-### Work Mode
-
-The Work Mode select controls the battery's operating strategy:
+### Work Modes
 
 | Mode | Description |
 |---|---|
-| `Self-Consumption (AI)` | Battery charges/discharges automatically based on solar and consumption |
-| `Custom / Manual` | Manual control via Battery Direction + Power slider |
-| `Disabled` | EMS is turned off entirely |
+| Self-Consumption (AI) | Automatic charge/discharge based on solar and consumption |
+| Custom / Manual | Manual control via Direction + Power |
+| Disabled | EMS turned off |
 
 ### SOC Limits
 
-- **Discharge Limit** — the battery stops discharging when SOC drops to this level (default 10%)
-- **Charge Limit** — the battery stops charging when SOC reaches this level (default 98%)
+- **Discharge Limit** — stops discharging at this SOC (default 10%)
+- **Charge Limit** — stops charging at this SOC (default 98%)
 
 ---
 
-## Compatibility
+## Testing with an Untested Brand
 
-This integration works with batteries based on the AECC platform protocol. Tested with:
+If you have an AECC-platform battery from a brand not yet listed as tested:
 
-| Brand | Data source | DeviceManagement |
-|---|---|---|
-| **Lunergy** | SSumInfoList | Not available (graceful skip) |
-| **Sunpura** | Storage_list + SSumInfoList | Serial + firmware detected |
+1. Install the integration and select your brand (or "Other")
+2. **Start with monitoring only** — check that sensors return data and values look correct
+3. Only try control features after confirming sensors work
+4. Open an issue or PR to let us know your results
 
-Other AECC-based brands (same protocol, different branding) may also work. If you test with another brand, please open an issue to let us know.
+The integration writes the same registers as the official AECC app, but different devices may have firmware variations.
 
 ---
 
 ## Troubleshooting
 
 **Entities show "Unavailable"**
-- Verify the battery IP and port are reachable: `ping <battery-ip>` from your HA host
+- Verify the battery IP and port: `ping <battery-ip>` from your HA host
 - Check Home Assistant logs for connection errors
 
-**Battery direction/power has no effect**
-- The integration automatically sets Custom mode when you pick a direction, so no manual mode switching is needed
-- Check the HA logs for `SET battery_control` entries to confirm the command was sent
+**Controls have no effect**
+- The integration automatically sets Custom mode when you pick a direction
+- Check logs for `SET battery_control` entries
 
 **Energy sensors show 0 kWh after restart**
-- On first install, energy sensors start at 0 and accumulate from there
-- After a restart, the last known value is restored automatically
-- If values reset to 0, check that your HA recorder is working correctly
-
-**Slow response after setting power**
-- The firmware has a brief processing pause after a SET command (~2 s)
-- The integration tolerates 5 consecutive polling failures before marking entities unavailable
-
----
-
-## Known Register Map
-
-| Register | Description | Confirmed |
-|---|---|---|
-| `3000` | EMS enable (0=off, 1=on) | Yes |
-| `3003` | controlTime1 — power schedule slot | Yes |
-| `3020` | Energy mode (6=custom) | Yes |
-| `3021` | AI smart charge (0=off, 1=on) | Yes |
-| `3022` | AI smart discharge (0=off, 1=on) | Yes |
-| `3023` | Min discharge SOC (%) | Yes, 10% |
-| `3024` | Max charge SOC (%) | Yes, 98% |
-| `3030` | Custom mode (0=off, 1=on) | Yes |
-| `3039` | Max feed power (W) — gates local power cap | Yes, 2400 W |
+- On first install, sensors start at 0 and accumulate
+- After restart, last known values are restored automatically
 
 ---
 
 ## Credits
 
-Forked from [Mathieuleysen/Sunpura-Local-TCP](https://github.com/Mathieuleysen/Sunpura-Local-TCP). Extended with multi-brand AECC compatibility, energy dashboard sensors, improved battery control UX, and Lunergy branding.
+Based on [Mathieuleysen/Sunpura-Local-TCP](https://github.com/Mathieuleysen/Sunpura-Local-TCP). Extended with multi-brand AECC support, energy dashboard sensors, battery control, and multi-language translations.
+
+Maintained by [StekkerDeal](https://stekkerdeal.nl/).
 
 ## License
 

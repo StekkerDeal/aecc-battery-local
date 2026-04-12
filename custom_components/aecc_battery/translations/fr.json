@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connecter une batterie AECC",
+        "description": "Entrez les informations réseau de votre batterie AECC. La batterie doit être accessible à l'adresse IP indiquée.",
+        "data": {
+          "host": "Adresse IP",
+          "port": "Port TCP",
+          "name": "Nom de l'appareil",
+          "manufacturer": "Marque de batterie",
+          "model": "Modèle (optionnel)"
+        },
+        "data_description": {
+          "host": "Adresse IP locale fixe de votre batterie (ex. 192.168.0.100)",
+          "port": "Port TCP de la batterie (généralement 8080)",
+          "name": "Nom affiché dans Home Assistant",
+          "manufacturer": "Sélectionnez la marque de votre batterie",
+          "model": "Nom du modèle (ex. Hub 2400 AC, S2400, SR)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Connexion impossible. Vérifiez l'adresse IP, le port et que la batterie est en ligne.",
+      "unknown": "Erreur inattendue. Consultez le journal Home Assistant pour plus de détails."
+    },
+    "abort": {
+      "already_configured": "Cette batterie (host:port) est déjà configurée."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Reconfigurer la batterie AECC",
+        "description": "Modifier les paramètres de connexion. Home Assistant se reconnectera immédiatement.",
+        "data": {
+          "host": "Adresse IP",
+          "port": "Port TCP",
+          "name": "Nom de l'appareil",
+          "manufacturer": "Marque de batterie",
+          "model": "Modèle (optionnel)",
+          "extended_power": "Plage de puissance étendue (jusqu'à 2400W)"
+        },
+        "data_description": {
+          "extended_power": "Par défaut, le contrôle local est limité à 800W. Activez cette option pour permettre jusqu'à 2400W via le registre 3039. C'est le même paramètre utilisé par l'application AECC."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Connexion impossible. Vérifiez l'adresse IP, le port et que la batterie est en ligne.",
+      "unknown": "Erreur inattendue. Consultez le journal Home Assistant pour plus de détails."
+    }
+  }
+}

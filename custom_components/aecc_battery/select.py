@@ -1,4 +1,4 @@
-"""Select platform – battery work mode for Lunergy Local Battery."""
+"""Select platform - battery work mode and direction."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, WORK_MODES
-from .coordinator import LunergyLocalCoordinator
+from .coordinator import AeccBatteryCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,14 +22,14 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: LunergyLocalCoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: AeccBatteryCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     async_add_entities([
-        LunergyWorkModeSelect(coordinator, config_entry),
-        LunergyBatteryDirection(coordinator, config_entry),
+        AeccWorkModeSelect(coordinator, config_entry),
+        AeccBatteryDirection(coordinator, config_entry),
     ])
 
 
-class LunergyWorkModeSelect(CoordinatorEntity[LunergyLocalCoordinator], SelectEntity):
+class AeccWorkModeSelect(CoordinatorEntity[AeccBatteryCoordinator], SelectEntity):
     """Dropdown to switch the battery between Self-Consumption, Custom, and Disabled."""
 
     _attr_icon = "mdi:battery-sync"
@@ -39,7 +39,7 @@ class LunergyWorkModeSelect(CoordinatorEntity[LunergyLocalCoordinator], SelectEn
 
     def __init__(
         self,
-        coordinator: LunergyLocalCoordinator,
+        coordinator: AeccBatteryCoordinator,
         config_entry: ConfigEntry,
     ) -> None:
         super().__init__(coordinator)
@@ -72,7 +72,7 @@ class LunergyWorkModeSelect(CoordinatorEntity[LunergyLocalCoordinator], SelectEn
 DIRECTION_OPTIONS = ["Charge", "Discharge", "Idle"]
 
 
-class LunergyBatteryDirection(CoordinatorEntity[LunergyLocalCoordinator], SelectEntity):
+class AeccBatteryDirection(CoordinatorEntity[AeccBatteryCoordinator], SelectEntity):
     """Select charge direction. Automatically switches to Custom mode when Charge/Discharge is selected."""
 
     _attr_icon = "mdi:battery-charging-wireless"
@@ -80,11 +80,10 @@ class LunergyBatteryDirection(CoordinatorEntity[LunergyLocalCoordinator], Select
     _attr_name = "Battery Direction"
     _attr_options = DIRECTION_OPTIONS
 
-    def __init__(self, coordinator: LunergyLocalCoordinator, config_entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_battery_direction"
-        # Derive initial direction from current battery state
         charge = coordinator.get_value("battery_charging_power") or 0
         discharge = coordinator.get_value("battery_discharging_power") or 0
         try:
@@ -96,7 +95,7 @@ class LunergyBatteryDirection(CoordinatorEntity[LunergyLocalCoordinator], Select
                 self._current_direction = "Idle"
         except (TypeError, ValueError):
             self._current_direction = "Idle"
-        coordinator._commanded_direction = self._current_direction
+        coordinator.commanded_direction = self._current_direction
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -112,14 +111,13 @@ class LunergyBatteryDirection(CoordinatorEntity[LunergyLocalCoordinator], Select
 
     async def async_select_option(self, option: str) -> None:
         _LOGGER.info("User selected battery direction: %s", option)
-        # Use the current commanded power from coordinator (default 0 for Idle)
-        power = getattr(self.coordinator, "_commanded_power", 0) or 0
+        power = self.coordinator.commanded_power or 0
         if option == "Idle":
             power = 0
         success = await self.coordinator.async_set_battery_control(option, power)
         if success:
             self._current_direction = option
-            self.coordinator._commanded_direction = option
+            self.coordinator.commanded_direction = option
             self.async_write_ha_state()
         else:
             _LOGGER.error("Failed to set battery direction to '%s'", option)

@@ -1,4 +1,4 @@
-"""Sensor platform for Lunergy Local Battery."""
+"""Sensor platform for AECC Battery (Local TCP)."""
 from __future__ import annotations
 
 import logging
@@ -14,8 +14,8 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.dt import utcnow
 
-from .const import CONF_HOST, CONF_NAME, CONF_PORT, DOMAIN
-from .coordinator import LunergyLocalCoordinator
+from .const import DOMAIN
+from .coordinator import AeccBatteryCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,54 +34,55 @@ _SENSORS = [
 ]
 
 # ── Energy counter definitions ────────────────────────────────────────────────
-# Each entry: (key, name, list_of_canonical_power_keys, icon)
 _ENERGY_SENSORS = [
     ("energy_charged",    "Energy Charged",    ["ac_charging_power", "pv_charging_power"], "mdi:battery-charging"),
     ("energy_discharged", "Energy Discharged",  ["battery_discharging_power"],              "mdi:battery-arrow-down-outline"),
     ("energy_generated",  "Energy Generated",   ["pv_power"],                               "mdi:solar-power"),
 ]
 
-_MAX_GAP_SECONDS = 60  # Skip accumulation if time gap exceeds this (avoids phantom spikes)
+_MAX_GAP_SECONDS = 60
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
-    coordinator: LunergyLocalCoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: AeccBatteryCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities: list[SensorEntity] = []
 
-    # Standard power/measurement sensors
     for key, name, canonical_key, unit, icon, is_power in _SENSORS:
         entities.append(
-            LunergySensor(coordinator, config_entry, key, name, canonical_key, unit, icon, is_power)
+            AeccSensor(coordinator, config_entry, key, name, canonical_key, unit, icon, is_power)
         )
 
-    # Energy counter sensors (Riemann sum)
     for key, name, power_keys, icon in _ENERGY_SENSORS:
         entities.append(
-            LunergyEnergySensor(coordinator, config_entry, key, name, power_keys, icon)
+            AeccEnergySensor(coordinator, config_entry, key, name, power_keys, icon)
         )
 
-    # Derived sensors
-    entities.append(LunergyGridExportSensor(coordinator, config_entry))
-    entities.append(LunergyBatteryPowerSensor(coordinator, config_entry))
-    entities.append(LunergyBatteryStatusSensor(coordinator, config_entry))
+    entities.append(AeccGridExportSensor(coordinator, config_entry))
+    entities.append(AeccBatteryPowerSensor(coordinator, config_entry))
+    entities.append(AeccBatteryStatusSensor(coordinator, config_entry))
 
-    # Firmware version (diagnostic, only if DeviceManagement probe succeeded)
     if coordinator.firmware_version is not None:
-        entities.append(LunergyFirmwareSensor(coordinator, config_entry))
+        entities.append(AeccFirmwareSensor(coordinator, config_entry))
 
     async_add_entities(entities)
 
 
-def _device_info(config_entry: ConfigEntry, coordinator: LunergyLocalCoordinator) -> DeviceInfo:
-    return coordinator.device_info
-
-
-class LunergySensor(CoordinatorEntity[LunergyLocalCoordinator], SensorEntity):
+class AeccSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, coordinator, config_entry, key, name, canonical_key, unit, icon, is_power):
+    def __init__(
+        self,
+        coordinator: AeccBatteryCoordinator,
+        config_entry: ConfigEntry,
+        key: str,
+        name: str,
+        canonical_key: str,
+        unit: str,
+        icon: str,
+        is_power: bool,
+    ) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._canonical_key = canonical_key
@@ -110,9 +111,7 @@ class LunergySensor(CoordinatorEntity[LunergyLocalCoordinator], SensorEntity):
         return self._last_value is not None or self.coordinator.last_update_success
 
 
-# ── Energy counter (Riemann sum + RestoreEntity) ──────────────────────────────
-
-class LunergyEnergySensor(CoordinatorEntity[LunergyLocalCoordinator], RestoreEntity, SensorEntity):
+class AeccEnergySensor(CoordinatorEntity[AeccBatteryCoordinator], RestoreEntity, SensorEntity):
     """Accumulated energy (kWh) computed by integrating power over time."""
 
     _attr_has_entity_name = True
@@ -121,7 +120,15 @@ class LunergyEnergySensor(CoordinatorEntity[LunergyLocalCoordinator], RestoreEnt
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_suggested_display_precision = 3
 
-    def __init__(self, coordinator, config_entry, key, name, power_keys, icon):
+    def __init__(
+        self,
+        coordinator: AeccBatteryCoordinator,
+        config_entry: ConfigEntry,
+        key: str,
+        name: str,
+        power_keys: list[str],
+        icon: str,
+    ) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._power_keys = power_keys
@@ -140,7 +147,6 @@ class LunergyEnergySensor(CoordinatorEntity[LunergyLocalCoordinator], RestoreEnt
         return round(self._accumulated_kwh, 3)
 
     async def async_added_to_hass(self) -> None:
-        """Restore accumulated kWh from last known state."""
         await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
         if last_state and last_state.state not in ("unknown", "unavailable"):
@@ -148,14 +154,11 @@ class LunergyEnergySensor(CoordinatorEntity[LunergyLocalCoordinator], RestoreEnt
                 self._accumulated_kwh = float(last_state.state)
             except (TypeError, ValueError):
                 self._accumulated_kwh = 0.0
-        # Leave _last_update_time = None so first poll sets baseline without accumulating
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Accumulate energy on each coordinator poll."""
         now = utcnow()
 
-        # Sum power from all source keys
         total_power_w = 0.0
         any_valid = False
         for key in self._power_keys:
@@ -179,9 +182,7 @@ class LunergyEnergySensor(CoordinatorEntity[LunergyLocalCoordinator], RestoreEnt
         self.async_write_ha_state()
 
 
-# ── Grid Export Power (derived) ───────────────────────────────────────────────
-
-class LunergyGridExportSensor(CoordinatorEntity[LunergyLocalCoordinator], SensorEntity):
+class AeccGridExportSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
     """Grid export power derived from grid_power. Export = positive grid values only."""
 
     _attr_has_entity_name = True
@@ -191,7 +192,7 @@ class LunergyGridExportSensor(CoordinatorEntity[LunergyLocalCoordinator], Sensor
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfPower.WATT
 
-    def __init__(self, coordinator, config_entry):
+    def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_grid_export_power"
@@ -206,15 +207,12 @@ class LunergyGridExportSensor(CoordinatorEntity[LunergyLocalCoordinator], Sensor
         if grid is None:
             return None
         try:
-            # AECC sign convention: positive = importing, negative = exporting
             return max(0, round(-float(grid), 1))
         except (TypeError, ValueError):
             return None
 
 
-# ── Battery Power (signed) ────────────────────────────────────────────────────
-
-class LunergyBatteryPowerSensor(CoordinatorEntity[LunergyLocalCoordinator], SensorEntity):
+class AeccBatteryPowerSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
     """Single signed value: positive = charging, negative = discharging."""
 
     _attr_has_entity_name = True
@@ -224,7 +222,7 @@ class LunergyBatteryPowerSensor(CoordinatorEntity[LunergyLocalCoordinator], Sens
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfPower.WATT
 
-    def __init__(self, coordinator, config_entry):
+    def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_battery_power"
@@ -239,24 +237,20 @@ class LunergyBatteryPowerSensor(CoordinatorEntity[LunergyLocalCoordinator], Sens
         ac_charge = self.coordinator.get_value("ac_charging_power") or 0
         discharge = self.coordinator.get_value("battery_discharging_power") or 0
         try:
-            # Use whichever charging value is higher — in AI mode,
-            # BatteryChargingPower stays 0 while AcChargingPower reports correctly.
             effective_charge = max(float(charge), float(ac_charge))
             return round(effective_charge - float(discharge), 1)
         except (TypeError, ValueError):
             return None
 
 
-# ── Battery Status (text) ─────────────────────────────────────────────────────
-
-class LunergyBatteryStatusSensor(CoordinatorEntity[LunergyLocalCoordinator], SensorEntity):
+class AeccBatteryStatusSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
     """Derived text status: Charging / Discharging / Idle."""
 
     _attr_has_entity_name = True
     _attr_name = "Battery Status"
     _attr_icon = "mdi:battery-heart-variant"
 
-    def __init__(self, coordinator, config_entry):
+    def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_battery_status"
@@ -271,7 +265,6 @@ class LunergyBatteryStatusSensor(CoordinatorEntity[LunergyLocalCoordinator], Sen
         charge = self.coordinator.get_value("battery_charging_power")
         ac_charge = self.coordinator.get_value("ac_charging_power")
         discharge = self.coordinator.get_value("battery_discharging_power")
-        # If all are None, keep last known status (transient poll failure)
         if charge is None and ac_charge is None and discharge is None:
             return self._last_status
         try:
@@ -280,7 +273,6 @@ class LunergyBatteryStatusSensor(CoordinatorEntity[LunergyLocalCoordinator], Sen
             discharge_f = float(discharge or 0)
         except (TypeError, ValueError):
             return self._last_status
-        # In AI mode, BatteryChargingPower stays 0 while AcChargingPower reports correctly
         if charge_f > 0 or ac_charge_f > 0:
             status = "Charging"
         elif discharge_f > 0:
@@ -291,17 +283,15 @@ class LunergyBatteryStatusSensor(CoordinatorEntity[LunergyLocalCoordinator], Sen
         return status
 
 
-# ── Firmware Version (diagnostic) ─────────────────────────────────────────────
-
-class LunergyFirmwareSensor(CoordinatorEntity[LunergyLocalCoordinator], SensorEntity):
-    """Firmware version from DeviceManagement probe (Sunpura only)."""
+class AeccFirmwareSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
+    """Firmware version from DeviceManagement probe (supported on some AECC devices)."""
 
     _attr_has_entity_name = True
     _attr_name = "Firmware Version"
     _attr_icon = "mdi:chip"
     _attr_entity_category = "diagnostic"
 
-    def __init__(self, coordinator, config_entry):
+    def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_firmware_version"

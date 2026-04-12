@@ -1,25 +1,37 @@
-"""Constants for the Lunergy Local Battery integration."""
+"""Constants for the AECC Battery (Local TCP) integration."""
 
-DOMAIN = "lunergy_local"
+DOMAIN = "aecc_battery"
 
 # Config entry keys
 CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_NAME = "name"
 CONF_EXTENDED_POWER = "extended_power"
+CONF_MANUFACTURER = "manufacturer"
+CONF_MODEL = "model"
 
 # Default connection values
 DEFAULT_HOST = "192.168.0.1"
 DEFAULT_PORT = 8080
-DEFAULT_NAME = "Lunergy Battery"
+DEFAULT_NAME = "AECC Battery"
 DEFAULT_TIMEOUT = 5  # seconds
 POLL_INTERVAL = 5           # seconds – change this to update faster/slower
 MIN_POLL_INTERVAL = 2       # seconds – hard floor to avoid flooding the device
 MAX_BATTERY_POWER_W = 2400       # watts – hardware rated max
 MAX_REGISTER_POWER_DEFAULT = 800   # watts – default local TCP limit without extended power
 
+# Known AECC brands (for config flow dropdown)
+KNOWN_BRANDS = [
+    "Lunergy",
+    "Sunpura",
+    "Voltdeer",
+    "AEG",
+    "Other",
+]
+
 # ─── Control register addresses (confirmed by register scan) ─────────────────
 REG_EMS_ENABLE      = "3000"   # 0 = off, 1 = on
+REG_SCHEDULE_MODE   = "3020"   # Schedule mode (6 = custom schedule)
 REG_AI_SMART_CHARGE = "3021"   # 0 = off, 1 = on
 REG_AI_SMART_DISC   = "3022"   # 0 = off, 1 = on
 REG_CUSTOM_MODE     = "3030"   # 0 = off, 1 = on

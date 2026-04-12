@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "AECC-Batterie verbinden",
+        "description": "Geben Sie die Netzwerkdaten Ihrer AECC-Plattform-Batterie ein. Die Batterie muss unter der angegebenen IP-Adresse erreichbar sein.",
+        "data": {
+          "host": "IP-Adresse",
+          "port": "TCP-Port",
+          "name": "Gerätename",
+          "manufacturer": "Batteriemarke",
+          "model": "Modell (optional)"
+        },
+        "data_description": {
+          "host": "Feste lokale IP-Adresse Ihrer Batterie (z.B. 192.168.0.100)",
+          "port": "TCP-Port der Batterie (normalerweise 8080)",
+          "name": "Anzeigename in Home Assistant",
+          "manufacturer": "Marke Ihrer Batterie auswählen",
+          "model": "Modellname (z.B. Hub 2400 AC, S2400, SR)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung nicht möglich. Prüfen Sie IP-Adresse, Port und ob die Batterie online ist.",
+      "unknown": "Unerwarteter Fehler. Details im Home Assistant-Protokoll."
+    },
+    "abort": {
+      "already_configured": "Diese Batterie (Host:Port) ist bereits konfiguriert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "AECC-Batterie neu konfigurieren",
+        "description": "Verbindungsdaten ändern. Home Assistant verbindet sich sofort neu.",
+        "data": {
+          "host": "IP-Adresse",
+          "port": "TCP-Port",
+          "name": "Gerätename",
+          "manufacturer": "Batteriemarke",
+          "model": "Modell (optional)",
+          "extended_power": "Erweiterter Leistungsbereich (bis 2400W)"
+        },
+        "data_description": {
+          "extended_power": "Standardmäßig ist die lokale Steuerung auf 800W begrenzt. Aktivieren Sie dies, um Leistung bis 2400W über Register 3039 zu ermöglichen. Dies ist die gleiche Einstellung wie in der AECC-App."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung nicht möglich. Prüfen Sie IP-Adresse, Port und ob die Batterie online ist.",
+      "unknown": "Unerwarteter Fehler. Details im Home Assistant-Protokoll."
+    }
+  }
+}

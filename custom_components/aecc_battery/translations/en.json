@@ -2,23 +2,27 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to Lunergy Battery",
-        "description": "Enter the local network details for your Lunergy EMS battery hub. The battery must be reachable at the given IP before you can continue.",
+        "title": "Connect to AECC Battery",
+        "description": "Enter the local network details for your AECC-platform battery. The battery must be reachable at the given IP before you can continue.",
         "data": {
           "host": "IP Address",
           "port": "TCP Port",
-          "name": "Device Name"
+          "name": "Device Name",
+          "manufacturer": "Battery Brand",
+          "model": "Model (optional)"
         },
         "data_description": {
           "host": "Static local IP of your battery (e.g. 192.168.0.100)",
           "port": "TCP port the battery listens on (typically 8080)",
-          "name": "Friendly name shown in Home Assistant"
+          "name": "Friendly name shown in Home Assistant",
+          "manufacturer": "Select your battery brand",
+          "model": "Model name (e.g. Hub 2400 AC, S2400, SR)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect – check the IP, port, and that the battery is online.",
-      "unknown": "Unexpected error – see the Home Assistant log for details."
+      "cannot_connect": "Cannot connect - check the IP, port, and that the battery is online.",
+      "unknown": "Unexpected error - see the Home Assistant log for details."
     },
     "abort": {
       "already_configured": "This battery (host:port) is already configured."
@@ -27,12 +31,14 @@
   "options": {
     "step": {
       "init": {
-        "title": "Reconfigure Lunergy Battery",
+        "title": "Reconfigure AECC Battery",
         "description": "Update the connection details. Home Assistant will reconnect immediately.",
         "data": {
           "host": "IP Address",
           "port": "TCP Port",
           "name": "Device Name",
+          "manufacturer": "Battery Brand",
+          "model": "Model (optional)",
           "extended_power": "Extended power range (up to 2400W)"
         },
         "data_description": {
@@ -41,8 +47,8 @@
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect – check the IP, port, and that the battery is online.",
-      "unknown": "Unexpected error – see the Home Assistant log for details."
+      "cannot_connect": "Cannot connect - check the IP, port, and that the battery is online.",
+      "unknown": "Unexpected error - see the Home Assistant log for details."
     }
   }
 }
