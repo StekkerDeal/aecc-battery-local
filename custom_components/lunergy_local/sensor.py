@@ -29,7 +29,6 @@ _SENSORS = [
     ("pv_charging_power",           "PV Charging Power",         "pv_charging_power",          UnitOfPower.WATT, "mdi:solar-panel",               True),
     ("grid_power",                  "Grid / Meter Power",        "grid_power",                 UnitOfPower.WATT, "mdi:transmission-tower",        True),
     ("backup_power",                "Backup Power",              "backup_power",               UnitOfPower.WATT, "mdi:power-plug-battery",        True),
-    ("home_consumption",            "Home Consumption",          "home_consumption",           UnitOfPower.WATT, "mdi:home-lightning-bolt",       True),
     ("pv1_power",                   "PV String 1 Power",         "pv1_power",                  UnitOfPower.WATT, "mdi:solar-panel",               True),
     ("pv2_power",                   "PV String 2 Power",         "pv2_power",                  UnitOfPower.WATT, "mdi:solar-panel",               True),
 ]

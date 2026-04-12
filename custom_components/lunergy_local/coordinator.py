@@ -59,9 +59,6 @@ _FIELD_MAP: Dict[str, List[Tuple[str, str, float]]] = {
         ("storage", "OffGridLoadPower", 0.1),
         ("summary", "TotalBackUpPower", 1.0),
     ],
-    "home_consumption": [
-        ("summary", "TotalSmartLoadElectricalPower", 1.0),
-    ],
     "pv1_power": [
         ("storage", "Pv1Power", 1.0),
     ],
