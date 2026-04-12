@@ -11,6 +11,14 @@ Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, A
 
 ---
 
+## Screenshots
+
+| Setup | Sensors | Controls | Energy Dashboard |
+|---|---|---|---|
+| ![Setup](images/setup.png) | ![Sensors](images/sensors.png) | ![Controls](images/controls.png) | ![Energy Dashboard](images/ha-energy-dashboard.png) |
+
+---
+
 ## Features
 
 - **100% local** — communicates directly with your battery over TCP (port 8080)
