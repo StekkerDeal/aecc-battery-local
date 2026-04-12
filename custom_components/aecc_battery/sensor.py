@@ -1,4 +1,5 @@
 """Sensor platform for AECC Battery (Local TCP)."""
+
 from __future__ import annotations
 
 import logging
@@ -20,43 +21,48 @@ from .coordinator import AeccBatteryCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 # ── Standard power/measurement sensors ────────────────────────────────────────
+# (key, name, canonical_key, unit, icon, is_power)
 _SENSORS = [
-    #  (key,                        name,                        canonical_key,                unit,             icon,                            is_power)
-    ("ac_charging_power",           "AC Charging Power",         "ac_charging_power",          UnitOfPower.WATT, "mdi:power-plug",                True),
-    ("battery_discharging_power",   "Battery Discharging Power", "battery_discharging_power",  UnitOfPower.WATT, "mdi:battery-arrow-down",        True),
-    ("battery_soc",                 "Battery SOC",               "battery_soc",                PERCENTAGE,       "mdi:battery",                   False),
-    ("pv_power",                    "PV Power",                  "pv_power",                   UnitOfPower.WATT, "mdi:solar-power",               True),
-    ("pv_charging_power",           "PV Charging Power",         "pv_charging_power",          UnitOfPower.WATT, "mdi:solar-panel",               True),
-    ("grid_power",                  "Grid / Meter Power",        "grid_power",                 UnitOfPower.WATT, "mdi:transmission-tower",        True),
-    ("backup_power",                "Backup Power",              "backup_power",               UnitOfPower.WATT, "mdi:power-plug-battery",        True),
-    ("pv1_power",                   "PV String 1 Power",         "pv1_power",                  UnitOfPower.WATT, "mdi:solar-panel",               True),
-    ("pv2_power",                   "PV String 2 Power",         "pv2_power",                  UnitOfPower.WATT, "mdi:solar-panel",               True),
+    ("ac_charging_power", "AC Charging Power", "ac_charging_power", UnitOfPower.WATT, "mdi:power-plug", True),
+    (
+        "battery_discharging_power",
+        "Battery Discharging Power",
+        "battery_discharging_power",
+        UnitOfPower.WATT,
+        "mdi:battery-arrow-down",
+        True,
+    ),
+    ("battery_soc", "Battery SOC", "battery_soc", PERCENTAGE, "mdi:battery", False),
+    ("pv_power", "PV Power", "pv_power", UnitOfPower.WATT, "mdi:solar-power", True),
+    ("pv_charging_power", "PV Charging Power", "pv_charging_power", UnitOfPower.WATT, "mdi:solar-panel", True),
+    ("grid_power", "Grid / Meter Power", "grid_power", UnitOfPower.WATT, "mdi:transmission-tower", True),
+    ("backup_power", "Backup Power", "backup_power", UnitOfPower.WATT, "mdi:power-plug-battery", True),
+    ("pv1_power", "PV String 1 Power", "pv1_power", UnitOfPower.WATT, "mdi:solar-panel", True),
+    ("pv2_power", "PV String 2 Power", "pv2_power", UnitOfPower.WATT, "mdi:solar-panel", True),
 ]
 
 # ── Energy counter definitions ────────────────────────────────────────────────
+# (key, name, power_keys, icon)
 _ENERGY_SENSORS = [
-    ("energy_charged",    "Energy Charged",    ["ac_charging_power", "pv_charging_power"], "mdi:battery-charging"),
-    ("energy_discharged", "Energy Discharged",  ["battery_discharging_power"],              "mdi:battery-arrow-down-outline"),
-    ("energy_generated",  "Energy Generated",   ["pv_power"],                               "mdi:solar-power"),
+    ("energy_charged", "Energy Charged", ["ac_charging_power", "pv_charging_power"], "mdi:battery-charging"),
+    ("energy_discharged", "Energy Discharged", ["battery_discharging_power"], "mdi:battery-arrow-down-outline"),
+    ("energy_generated", "Energy Generated", ["pv_power"], "mdi:solar-power"),
 ]
 
 _MAX_GAP_SECONDS = 60
 
 
-async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry,
-                            async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     coordinator: AeccBatteryCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities: list[SensorEntity] = []
 
     for key, name, canonical_key, unit, icon, is_power in _SENSORS:
-        entities.append(
-            AeccSensor(coordinator, config_entry, key, name, canonical_key, unit, icon, is_power)
-        )
+        entities.append(AeccSensor(coordinator, config_entry, key, name, canonical_key, unit, icon, is_power))
 
     for key, name, power_keys, icon in _ENERGY_SENSORS:
-        entities.append(
-            AeccEnergySensor(coordinator, config_entry, key, name, power_keys, icon)
-        )
+        entities.append(AeccEnergySensor(coordinator, config_entry, key, name, power_keys, icon))
 
     entities.append(AeccGridExportSensor(coordinator, config_entry))
     entities.append(AeccBatteryPowerSensor(coordinator, config_entry))

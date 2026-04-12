@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -11,8 +10,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
-    CONF_HOST, CONF_MANUFACTURER, CONF_MODEL, CONF_NAME, CONF_PORT,
-    CONF_EXTENDED_POWER, DEFAULT_TIMEOUT, DOMAIN,
+    CONF_EXTENDED_POWER,
+    CONF_HOST,
+    CONF_MANUFACTURER,
+    CONF_MODEL,
+    CONF_NAME,
+    CONF_PORT,
+    DEFAULT_TIMEOUT,
+    DOMAIN,
 )
 from .coordinator import AeccBatteryCoordinator
 from .tcp_client import AeccTcpClient
@@ -33,13 +38,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     client = AeccTcpClient(host, port, timeout=DEFAULT_TIMEOUT)
     try:
         await client.async_connect()
-    except (OSError, ConnectionError, asyncio.TimeoutError) as exc:
+    except (TimeoutError, OSError, ConnectionError) as exc:
         raise ConfigEntryNotReady(f"Cannot connect to {host}:{port} - {exc}") from exc
 
     extended_power = entry.options.get(CONF_EXTENDED_POWER, False)
     coordinator = AeccBatteryCoordinator(
-        hass, client, name,
-        manufacturer=manufacturer, model=model,
+        hass,
+        client,
+        name,
+        manufacturer=manufacturer,
+        model=model,
         extended_power=extended_power,
     )
     await coordinator.async_config_entry_first_refresh()

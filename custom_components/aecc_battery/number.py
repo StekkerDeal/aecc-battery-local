@@ -1,6 +1,9 @@
 """Number platform - Power Slider, Min SOC, Max SOC."""
+
 from __future__ import annotations
+
 import logging
+
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfPower
@@ -8,24 +11,29 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
 from .const import DOMAIN
 from .coordinator import AeccBatteryCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry,
-                            async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     coordinator: AeccBatteryCoordinator = hass.data[DOMAIN][config_entry.entry_id]
-    async_add_entities([
-        AeccPowerSlider(coordinator, config_entry),
-        AeccMinSoc(coordinator, config_entry),
-        AeccMaxSoc(coordinator, config_entry),
-    ])
+    async_add_entities(
+        [
+            AeccPowerSlider(coordinator, config_entry),
+            AeccMinSoc(coordinator, config_entry),
+            AeccMaxSoc(coordinator, config_entry),
+        ]
+    )
 
 
 class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
     """Battery power slider. Max depends on extended power setting (800W or 2400W)."""
+
     _attr_has_entity_name = True
     _attr_name = "Battery Power"
     _attr_icon = "mdi:battery-sync"
@@ -72,6 +80,7 @@ class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
 
 class AeccMinSoc(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
     """Minimum discharge SOC (register 3023)."""
+
     _attr_has_entity_name = True
     _attr_name = "Discharge Limit"
     _attr_icon = "mdi:battery-arrow-down"
@@ -108,6 +117,7 @@ class AeccMinSoc(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
 
 class AeccMaxSoc(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
     """Maximum charge SOC (register 3024)."""
+
     _attr_has_entity_name = True
     _attr_name = "Charge Limit"
     _attr_icon = "mdi:battery-arrow-up"

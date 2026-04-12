@@ -28,9 +28,7 @@ class TCPClientManager:
     # ── Factory ──────────────────────────────────────────────────────────────
 
     @classmethod
-    def get_instance(
-        cls, host: str, port: int, timeout: float = 5.0
-    ) -> TCPClientManager:
+    def get_instance(cls, host: str, port: int, timeout: float = 5.0) -> TCPClientManager:
         key = (host, port)
         if key not in cls._connections:
             cls._connections[key] = TCPClientManager(host, port, timeout)
@@ -58,7 +56,7 @@ class TCPClientManager:
                 timeout=self.timeout,
             )
             _LOGGER.info("Connected to %s:%s", self.host, self.port)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             _LOGGER.error("Connection timed out: %s:%s", self.host, self.port)
             raise
         except OSError as exc:

@@ -15,7 +15,6 @@ _GET_TIMEOUT = 10
 
 
 class AeccTcpClient:
-
     def __init__(self, host: str, port: int, timeout: float = 5.0) -> None:
         self.host = host
         self.port = port

@@ -6,17 +6,16 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
+    CONF_EXTENDED_POWER,
     CONF_HOST,
     CONF_MANUFACTURER,
     CONF_MODEL,
     CONF_NAME,
     CONF_PORT,
-    CONF_EXTENDED_POWER,
     DEFAULT_HOST,
     DEFAULT_NAME,
     DEFAULT_PORT,
@@ -45,12 +44,10 @@ class AeccBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
-    ) -> "AeccBatteryOptionsFlow":
+    ) -> AeccBatteryOptionsFlow:
         return AeccBatteryOptionsFlow(config_entry)
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
             host = user_input[CONF_HOST].strip()
             port = user_input[CONF_PORT]
@@ -85,9 +82,7 @@ class AeccBatteryOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._entry = config_entry
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
             new_options = {
                 CONF_EXTENDED_POWER: user_input.get(CONF_EXTENDED_POWER, False),
@@ -98,7 +93,10 @@ class AeccBatteryOptionsFlow(config_entries.OptionsFlow):
                     CONF_HOST: user_input[CONF_HOST].strip(),
                     CONF_PORT: user_input[CONF_PORT],
                     CONF_NAME: user_input[CONF_NAME].strip(),
-                    CONF_MANUFACTURER: user_input.get(CONF_MANUFACTURER, self._entry.data.get(CONF_MANUFACTURER, "AECC")),
+                    CONF_MANUFACTURER: user_input.get(
+                        CONF_MANUFACTURER,
+                        self._entry.data.get(CONF_MANUFACTURER, "AECC"),
+                    ),
                     CONF_MODEL: user_input.get(CONF_MODEL, "").strip(),
                 },
             )
@@ -111,7 +109,9 @@ class AeccBatteryOptionsFlow(config_entries.OptionsFlow):
                 vol.Required(CONF_HOST, default=current.get(CONF_HOST, DEFAULT_HOST)): str,
                 vol.Required(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): vol.Coerce(int),
                 vol.Required(CONF_NAME, default=current.get(CONF_NAME, DEFAULT_NAME)): str,
-                vol.Required(CONF_MANUFACTURER, default=current.get(CONF_MANUFACTURER, KNOWN_BRANDS[0])): vol.In(KNOWN_BRANDS),
+                vol.Required(CONF_MANUFACTURER, default=current.get(CONF_MANUFACTURER, KNOWN_BRANDS[0])): vol.In(
+                    KNOWN_BRANDS
+                ),
                 vol.Optional(CONF_MODEL, default=current.get(CONF_MODEL, "")): str,
                 vol.Optional(CONF_EXTENDED_POWER, default=current_options.get(CONF_EXTENDED_POWER, False)): bool,
             }

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 import logging
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -11,11 +11,19 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    DOMAIN, POLL_INTERVAL, MIN_POLL_INTERVAL,
-    MAX_BATTERY_POWER_W, MAX_REGISTER_POWER_DEFAULT,
-    REG_EMS_ENABLE, REG_SCHEDULE_MODE, REG_AI_SMART_CHARGE,
-    REG_AI_SMART_DISC, REG_CUSTOM_MODE, REG_CONTROL_TIME1,
-    REG_MAX_FEED_POWER, REG_MIN_SOC, REG_MAX_SOC, MODE_REGISTERS,
+    DOMAIN,
+    MAX_BATTERY_POWER_W,
+    MAX_REGISTER_POWER_DEFAULT,
+    MIN_POLL_INTERVAL,
+    MODE_REGISTERS,
+    POLL_INTERVAL,
+    REG_AI_SMART_CHARGE,
+    REG_AI_SMART_DISC,
+    REG_CONTROL_TIME1,
+    REG_CUSTOM_MODE,
+    REG_EMS_ENABLE,
+    REG_MAX_FEED_POWER,
+    REG_SCHEDULE_MODE,
 )
 from .tcp_client import AeccTcpClient
 
@@ -69,17 +77,22 @@ _FIELD_MAP: dict[str, list[tuple[str, str, float]]] = {
     ],
 }
 
-_SLOT_DISABLED   = "0,00:00,00:00,0,0,0,0,0,0,100,10"
-_CHARGING_SOC    = 100
+_SLOT_DISABLED = "0,00:00,00:00,0,0,0,0,0,0,100,10"
+_CHARGING_SOC = 100
 _DISCHARGING_SOC = 10
 
 
 class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-
-    def __init__(self, hass: HomeAssistant, client: AeccTcpClient,
-                 device_name: str, poll_interval: int = POLL_INTERVAL,
-                 manufacturer: str = "AECC", model: str = "",
-                 extended_power: bool = False) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: AeccTcpClient,
+        device_name: str,
+        poll_interval: int = POLL_INTERVAL,
+        manufacturer: str = "AECC",
+        model: str = "",
+        extended_power: bool = False,
+    ) -> None:
         self.client = client
         self.device_name = device_name
         self._manufacturer = manufacturer
@@ -94,15 +107,14 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._commanded_min_soc: int = 10
         self._commanded_max_soc: int = 100
         self.extended_power: bool = extended_power
-        self.max_register_power: int = (
-            MAX_BATTERY_POWER_W if extended_power else MAX_REGISTER_POWER_DEFAULT
-        )
+        self.max_register_power: int = MAX_BATTERY_POWER_W if extended_power else MAX_REGISTER_POWER_DEFAULT
         self.initial_min_soc: int | None = None
         self.initial_max_soc: int | None = None
         self.initial_work_mode: str | None = None
         self.initial_power: int | None = None
         super().__init__(
-            hass, _LOGGER,
+            hass,
+            _LOGGER,
             name=f"{DOMAIN}_{device_name}",
             update_interval=timedelta(seconds=max(poll_interval, MIN_POLL_INTERVAL)),
         )
@@ -113,18 +125,15 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         raw = await self.client.get_energy_parameters()
 
-        valid = (
-            raw is not None
-            and (raw.get("Storage_list") or raw.get("SSumInfoList"))
-        )
+        valid = raw is not None and (raw.get("Storage_list") or raw.get("SSumInfoList"))
 
         if not valid:
             self._consecutive_failures += 1
-            if (self._consecutive_failures <= self._failure_tolerance
-                    and self._last_good_data is not None):
+            if self._consecutive_failures <= self._failure_tolerance and self._last_good_data is not None:
                 _LOGGER.debug(
                     "Incomplete/missing poll response (%d/%d) - keeping last known data",
-                    self._consecutive_failures, self._failure_tolerance,
+                    self._consecutive_failures,
+                    self._failure_tolerance,
                 )
                 return self._last_good_data
             raise UpdateFailed(
@@ -177,9 +186,16 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.data.get("SSumInfoList", {}) if self.data else {}
 
     _STORAGE_POWER_KEYS = {
-        "PvChargingPower", "AcChargingPower", "BatteryDischargingPower",
-        "AcInActivePower", "OffGridLoadPower", "BatteryChargingPower",
-        "Pv1Power", "Pv2Power", "Pv3Power", "Pv4Power",
+        "PvChargingPower",
+        "AcChargingPower",
+        "BatteryDischargingPower",
+        "AcInActivePower",
+        "OffGridLoadPower",
+        "BatteryChargingPower",
+        "Pv1Power",
+        "Pv2Power",
+        "Pv3Power",
+        "Pv4Power",
     }
 
     def storage_val(self, key: str, default: Any = None) -> Any:
@@ -221,18 +237,15 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             slot1 = f"0,00:00,00:00,0,0,0,0,0,0,{charge_soc},{discharge_soc}"
         else:
             reg_power = -power_w if direction == "Charge" else power_w
-            slot1 = (
-                f"1,00:00,23:59,{reg_power},0,6,{field7},0,0,"
-                f"{charge_soc},{discharge_soc}"
-            )
+            slot1 = f"1,00:00,23:59,{reg_power},0,6,{field7},0,0,{charge_soc},{discharge_soc}"
 
         payload = {
-            REG_EMS_ENABLE:      "1",
-            REG_SCHEDULE_MODE:   "6",
+            REG_EMS_ENABLE: "1",
+            REG_SCHEDULE_MODE: "6",
             REG_AI_SMART_CHARGE: "0",
-            REG_AI_SMART_DISC:   "0",
-            REG_CUSTOM_MODE:     "1",
-            REG_CONTROL_TIME1:   slot1,
+            REG_AI_SMART_DISC: "0",
+            REG_CUSTOM_MODE: "1",
+            REG_CONTROL_TIME1: slot1,
         }
 
         if self.extended_power:
@@ -242,16 +255,18 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning(
                 "Power %d W exceeds default 800 W limit. "
                 "Enable 'Extended power range' in integration options to allow up to %d W.",
-                power_w, MAX_BATTERY_POWER_W,
+                power_w,
+                MAX_BATTERY_POWER_W,
             )
 
         _LOGGER.info(
             "SET battery_control direction=%s power=%d W -> 3003=%r",
-            direction, power_w, slot1,
+            direction,
+            power_w,
+            slot1,
         )
 
         resp = await self.client.set_control_parameters(payload)
-
 
         if resp is None:
             _LOGGER.warning("SET battery_control failed - no response from battery")
@@ -297,12 +312,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         resp = await self.client.get_control_parameters([3000, 3003, 3021, 3022, 3023, 3024, 3030])
         if resp is None:
             return
-        params = (
-            resp.get("ControlInfo")
-            or resp.get("GetParameters")
-            or resp.get("Parameters")
-            or {}
-        )
+        params = resp.get("ControlInfo") or resp.get("GetParameters") or resp.get("Parameters") or {}
         if not isinstance(params, dict):
             return
 
@@ -343,7 +353,8 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except (ValueError, IndexError):
                 pass
 
-        from .const import MODE_SELF_CONSUMPTION, MODE_CUSTOM, MODE_DISABLED
+        from .const import MODE_CUSTOM, MODE_DISABLED, MODE_SELF_CONSUMPTION
+
         if ems_on == 0:
             self.initial_work_mode = MODE_DISABLED
         elif custom_mode == 1:
@@ -362,12 +373,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("DeviceManagement probe returned nothing (not supported on all AECC devices)")
             return
 
-        params = (
-            info.get("DeviceManagementInfo")
-            or info.get("Parameters")
-            or info.get("GetParameters")
-            or {}
-        )
+        params = info.get("DeviceManagementInfo") or info.get("Parameters") or info.get("GetParameters") or {}
         if not isinstance(params, dict):
             return
 

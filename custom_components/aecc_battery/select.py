@@ -23,10 +23,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: AeccBatteryCoordinator = hass.data[DOMAIN][config_entry.entry_id]
-    async_add_entities([
-        AeccWorkModeSelect(coordinator, config_entry),
-        AeccBatteryDirection(coordinator, config_entry),
-    ])
+    async_add_entities(
+        [
+            AeccWorkModeSelect(coordinator, config_entry),
+            AeccBatteryDirection(coordinator, config_entry),
+        ]
+    )
 
 
 class AeccWorkModeSelect(CoordinatorEntity[AeccBatteryCoordinator], SelectEntity):

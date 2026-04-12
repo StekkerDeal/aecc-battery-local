@@ -1,7 +1,5 @@
 {
   "name": "AECC Battery (Local TCP)",
-  "domain": "aecc_battery",
-  "documentation": "https://github.com/StekkerDeal/aecc-battery-local",
   "homeassistant": "2024.1.0",
   "iot_class": "local_polling"
 }

@@ -59,9 +59,7 @@ class AeccEmsSwitch(CoordinatorEntity[AeccBatteryCoordinator], SwitchEntity):
         return self.coordinator.last_update_success
 
     async def async_turn_on(self, **kwargs) -> None:
-        resp = await self.coordinator.client.set_control_parameters(
-            {REG_EMS_ENABLE: "1"}
-        )
+        resp = await self.coordinator.client.set_control_parameters({REG_EMS_ENABLE: "1"})
         if resp is not None:
             self._optimistic = True
             self.async_write_ha_state()
@@ -70,9 +68,7 @@ class AeccEmsSwitch(CoordinatorEntity[AeccBatteryCoordinator], SwitchEntity):
             _LOGGER.error("Failed to enable EMS")
 
     async def async_turn_off(self, **kwargs) -> None:
-        resp = await self.coordinator.client.set_control_parameters(
-            {REG_EMS_ENABLE: "0"}
-        )
+        resp = await self.coordinator.client.set_control_parameters({REG_EMS_ENABLE: "0"})
         if resp is not None:
             self._optimistic = False
             self.async_write_ha_state()
