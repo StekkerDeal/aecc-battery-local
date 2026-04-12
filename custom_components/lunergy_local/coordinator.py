@@ -106,6 +106,8 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self.firmware_version: str | None = None
         self._commanded_power: int = 0
         self._commanded_direction: str = "Idle"
+        self._commanded_min_soc: int = 10
+        self._commanded_max_soc: int = 100
         self.extended_power: bool = extended_power
         self.max_register_power: int = (
             MAX_BATTERY_POWER_W if extended_power else MAX_REGISTER_POWER_DEFAULT
@@ -227,13 +229,16 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         has_storage = bool(self.data and self.data.get("Storage_list"))
         field7 = 5 if has_storage else 4
 
+        charge_soc = self._commanded_max_soc
+        discharge_soc = self._commanded_min_soc
+
         if direction == "Idle" or power_w == 0:
-            slot1 = _SLOT_DISABLED
+            slot1 = f"0,00:00,00:00,0,0,0,0,0,0,{charge_soc},{discharge_soc}"
         else:
             reg_power = -power_w if direction == "Charge" else power_w
             slot1 = (
                 f"1,00:00,23:59,{reg_power},0,6,{field7},0,0,"
-                f"{_CHARGING_SOC},{_DISCHARGING_SOC}"
+                f"{charge_soc},{discharge_soc}"
             )
 
         payload = {
@@ -299,11 +304,13 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         return resp is not None
 
     async def async_set_min_soc(self, value: int) -> bool:
+        self._commanded_min_soc = value
         resp = await self.client.set_control_parameters({"3023": str(value)})
         self._last_set_response = resp
         return resp is not None
 
     async def async_set_max_soc(self, value: int) -> bool:
+        self._commanded_max_soc = value
         resp = await self.client.set_control_parameters({"3024": str(value)})
         self._last_set_response = resp
         return resp is not None
@@ -342,9 +349,11 @@ class LunergyLocalCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
         if min_soc is not None:
             self.initial_min_soc = min_soc
+            self._commanded_min_soc = min_soc
             _LOGGER.info("Read initial min SOC: %d%%", min_soc)
         if max_soc is not None:
             self.initial_max_soc = max_soc
+            self._commanded_max_soc = max_soc
             _LOGGER.info("Read initial max SOC: %d%%", max_soc)
 
         # Parse power from register 3003 time-slot string
