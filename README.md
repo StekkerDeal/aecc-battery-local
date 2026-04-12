@@ -1,6 +1,7 @@
 # AECC Battery (Local TCP)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![CI](https://github.com/StekkerDeal/aecc-battery-local/actions/workflows/ci.yml/badge.svg)](https://github.com/StekkerDeal/aecc-battery-local/actions/workflows/ci.yml)
 [![GitHub release](https://img.shields.io/github/release/StekkerDeal/aecc-battery-local.svg)](https://github.com/StekkerDeal/aecc-battery-local/releases)
 ![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen.svg)
 
@@ -26,15 +27,24 @@ Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, A
 
 This integration works with batteries built on the AECC platform (ai-ec.cloud). The AECC platform is white-labeled by multiple battery brands that share the same local TCP protocol.
 
-| Brand | Status | Data Format |
-|---|---|---|
-| **Lunergy** (Hub 2400 AC) | Tested | SSumInfoList |
-| **Sunpura** (S2400) | Tested | Storage_list + SSumInfoList |
-| **Voltdeer** (SR) | Expected compatible | Untested |
-| **AEG** (Solarcube) | Expected compatible | Untested |
-| Other AECC brands | May work | Please report |
-
 If your battery uses the AECC app (or a white-labeled version), connects to an `ai-ec.cloud` server, and has TCP port 8080 open on your local network, this integration should work.
+
+### Tested Batteries
+
+| Brand | Model | Status | Notes |
+|---|---|---|---|
+| **Sunpura** | S2400 | Fully tested | PV input and multi-battery setups confirmed working |
+| **Lunergy** | Hub 2400 AC | Fully tested | TCP connection can be flaky; the integration handles reconnects automatically |
+
+### Expected Compatible (Untested)
+
+| Brand | Model | Notes |
+|---|---|---|
+| **Voltdeer** | SR | Same AECC platform, should work out of the box |
+| **AEG** | Solarcube | Same AECC platform, should work out of the box |
+| Other AECC brands | — | Any battery using the AECC / ai-ec.cloud platform may work |
+
+**Have a different AECC brand?** We'd love to hear from you. Install the integration, try it out, and [open an issue](https://github.com/StekkerDeal/aecc-battery-local/issues) to let us know if it works (or doesn't). Your feedback helps us expand the tested battery list.
 
 ---
 

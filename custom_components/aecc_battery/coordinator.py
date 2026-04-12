@@ -163,7 +163,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             manufacturer=self._manufacturer,
             model=self._model or None,
             sw_version=self.firmware_version,
-            configuration_url="https://stekkerdeal.nl/",
+            configuration_url="https://github.com/StekkerDeal/aecc-battery-local",
         )
 
     @property
