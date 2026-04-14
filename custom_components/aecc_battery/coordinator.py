@@ -339,7 +339,8 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not isinstance(params, dict):
             _LOGGER.debug(
                 "Control parameters unexpected type: %s, response keys: %s",
-                type(params).__name__, list(resp.keys()),
+                type(params).__name__,
+                list(resp.keys()),
             )
             return
         if not params:
@@ -415,7 +416,8 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not isinstance(params, dict):
             _LOGGER.debug(
                 "DeviceManagement params unexpected type: %s, response keys: %s",
-                type(params).__name__, list(info.keys()),
+                type(params).__name__,
+                list(info.keys()),
             )
             return
 
