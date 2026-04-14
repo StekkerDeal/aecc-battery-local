@@ -337,7 +337,10 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
         params = resp.get("ControlInfo") or resp.get("GetParameters") or resp.get("Parameters") or {}
         if not isinstance(params, dict):
-            _LOGGER.debug("Control parameters unexpected type: %s, response keys: %s", type(params).__name__, list(resp.keys()))
+            _LOGGER.debug(
+                "Control parameters unexpected type: %s, response keys: %s",
+                type(params).__name__, list(resp.keys()),
+            )
             return
         if not params:
             _LOGGER.debug("Control parameters empty, response keys: %s", list(resp.keys()))
@@ -410,7 +413,10 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         params = info.get("DeviceManagementInfo") or info.get("Parameters") or info.get("GetParameters") or {}
         if not isinstance(params, dict):
-            _LOGGER.debug("DeviceManagement params unexpected type: %s, response keys: %s", type(params).__name__, list(info.keys()))
+            _LOGGER.debug(
+                "DeviceManagement params unexpected type: %s, response keys: %s",
+                type(params).__name__, list(info.keys()),
+            )
             return
 
         serial = params.get("8") or params.get(8)
