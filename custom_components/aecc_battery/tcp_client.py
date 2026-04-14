@@ -81,9 +81,14 @@ class AeccTcpClient:
                         except json.JSONDecodeError:
                             await asyncio.sleep(0.05)
             except TimeoutError:
-                _LOGGER.debug("DeviceManagement probe timed out (not supported on all AECC devices)")
+                _LOGGER.debug(
+                    "DeviceManagement probe timed out (%d bytes received): %.200s",
+                    len(buffer),
+                    buffer.decode("utf-8", errors="replace") if buffer else "(empty)",
+                )
                 return None
-            except (ConnectionResetError, OSError, asyncio.IncompleteReadError):
+            except (ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
+                _LOGGER.debug("DeviceManagement probe connection error: %s", exc)
                 return None
             except (json.JSONDecodeError, UnicodeDecodeError, ValueError, KeyError) as exc:
                 _LOGGER.debug("DeviceManagement probe error: %s", exc)
@@ -102,21 +107,25 @@ class AeccTcpClient:
             "CommandSource": "HA",
             **(extra or {}),
         }
+        _LOGGER.debug("TX GET -> %s", command)
         async with self._io_lock:
             try:
                 reader, writer = await self._manager.get_reader_writer()
                 self._connected = True
                 writer.write((json.dumps(payload) + "\n").encode("utf-8"))
                 await writer.drain()
-                return await self._read_json(reader)
+                result = await self._read_json(reader)
+                if result is None:
+                    _LOGGER.warning("GET %s returned no data", command)
+                return result
             except (ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
-                _LOGGER.warning("GET connection error: %s - reconnecting after 2s cooldown", exc)
+                _LOGGER.warning("GET %s connection error: %s - reconnecting after 2s cooldown", command, exc)
                 self._connected = False
                 await asyncio.sleep(2)
                 await self._manager.reconnect()
                 return None
             except (json.JSONDecodeError, UnicodeDecodeError, ValueError, KeyError) as exc:
-                _LOGGER.error("GET error: %s", exc, exc_info=True)
+                _LOGGER.error("GET %s error: %s", command, exc, exc_info=True)
                 return None
 
     async def _set(self, command: str, extra: dict | None = None) -> dict[str, Any] | None:
@@ -138,13 +147,13 @@ class AeccTcpClient:
                 _LOGGER.debug("RX SET <- %s", response)
                 return response
             except (ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
-                _LOGGER.warning("SET connection error: %s - reconnecting after 2s cooldown", exc)
+                _LOGGER.warning("SET %s connection error: %s - reconnecting after 2s cooldown", command, exc)
                 self._connected = False
                 await asyncio.sleep(2)
                 await self._manager.reconnect()
                 return None
             except (json.JSONDecodeError, UnicodeDecodeError, ValueError, KeyError) as exc:
-                _LOGGER.error("SET error: %s", exc, exc_info=True)
+                _LOGGER.error("SET %s error: %s", command, exc, exc_info=True)
                 return None
 
     async def _read_json(self, reader: asyncio.StreamReader) -> dict[str, Any] | None:
@@ -163,5 +172,9 @@ class AeccTcpClient:
                     except json.JSONDecodeError:
                         await asyncio.sleep(0.05)
         except TimeoutError:
-            _LOGGER.warning("GET timed out waiting for response")
+            _LOGGER.warning(
+                "GET timed out waiting for response (%d bytes received): %.300s",
+                len(buffer),
+                buffer.decode("utf-8", errors="replace") if buffer else "(empty)",
+            )
             return None
