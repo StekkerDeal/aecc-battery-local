@@ -364,7 +364,18 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     reg_power = int(parts[3])
                     self.initial_power = abs(reg_power)
                     self._commanded_power = self.initial_power
-                    _LOGGER.info("Read initial power: %d W (register value: %d)", self.initial_power, reg_power)
+                    if reg_power > 0:
+                        self._commanded_direction = "Discharge"
+                    elif reg_power < 0:
+                        self._commanded_direction = "Charge"
+                    else:
+                        self._commanded_direction = "Idle"
+                    _LOGGER.info(
+                        "Read initial power: %d W (register value: %d, direction: %s)",
+                        self.initial_power,
+                        reg_power,
+                        self._commanded_direction,
+                    )
             except (ValueError, IndexError):
                 pass
 

@@ -95,15 +95,19 @@ You can update all settings at any time via the integration's **Configure** butt
 
 ### Extended Power Range
 
-By default, local TCP control is limited to **800W**. The battery hardware supports up to 2400W, but the firmware requires register 3039 (maxFeedPower) to be written before accepting higher values.
+By default, the AECC platform limits power to **800W** (both locally and in the app). The battery hardware supports up to 2400W, but two settings must be changed to unlock higher power:
 
-To unlock the full 2400W range:
+**Step 1 — AECC App (one-time, per device):**
+
+The AECC app has an "On Grid Output" setting (under Operating Mode Settings) that caps the maximum power the inverter will deliver. The factory default is **800W**. This setting is **not accessible via local TCP** and must be configured in the AECC app. Set it to your desired maximum (e.g. 2400W).
+
+**Step 2 — Integration:**
 
 1. Go to the integration's **Configure** button
 2. Enable **Extended power range (up to 2400W)**
 3. The power slider increases from 0-800W to 0-2400W
 
-This is the same mechanism the official AECC app uses.
+> **Disclaimer:** Only enable extended power (above 800W) when the battery is connected to its own dedicated circuit.
 
 ---
 
@@ -202,6 +206,9 @@ The integration writes the same registers as the official AECC app, but differen
 **Controls have no effect**
 - The integration automatically sets Custom mode when you pick a direction
 - Check logs for `SET battery_control` entries
+
+**Discharge/charge power capped below requested value**
+- Check the "On Grid Output" setting in the AECC app (Operating Mode Settings). This is a firmware-level cap that limits the maximum power the inverter delivers, regardless of what the integration requests. The factory default is 800W. Set it to your desired maximum (e.g. 2400W) in the app.
 
 **Energy sensors show 0 kWh after restart**
 - On first install, sensors start at 0 and accumulate

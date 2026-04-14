@@ -38,8 +38,8 @@ REG_CUSTOM_MODE = "3030"  # 0 = off, 1 = on
 
 # Power setpoint — time-slot format (confirmed from scan):
 #   "timeSwitch,startHH:MM,endHH:MM,powerW,0,mode,0,0,0,chargingSOC,dischargingSOC"
-#   e.g. "1,00:00,23:59,-2400,0,6,0,0,0,100,10"  (discharge at 2400 W)
-#        "1,00:00,23:59,2400,0,6,0,0,0,100,10"   (charge at 2400 W)
+#   e.g. "1,00:00,23:59,2400,0,6,0,0,0,100,10"    (discharge at 2400 W)
+#        "1,00:00,23:59,-2400,0,6,0,0,0,100,10"   (charge at 2400 W)
 #        "0,00:00,00:00,0,0,0,0,0,0,100,10"       (idle / disabled)
 REG_CONTROL_TIME1 = "3003"  # First active time slot
 
