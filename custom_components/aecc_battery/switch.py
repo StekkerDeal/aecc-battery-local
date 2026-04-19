@@ -11,7 +11,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, REG_EMS_ENABLE
+from .const import DOMAIN, REG_CONTROL_TIME1, REG_EMS_ENABLE, SLOT_DISABLED
 from .coordinator import AeccBatteryCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,8 +59,11 @@ class AeccEmsSwitch(CoordinatorEntity[AeccBatteryCoordinator], SwitchEntity):
         return self.coordinator.last_update_success
 
     async def async_turn_on(self, **kwargs) -> None:
-        resp = await self.coordinator.client.set_control_parameters({REG_EMS_ENABLE: "1"})
-        if resp is not None:
+        success = await self.coordinator.async_set_battery_control(
+            self.coordinator.commanded_direction,
+            self.coordinator.commanded_power,
+        )
+        if success:
             self._optimistic = True
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()
@@ -68,7 +71,12 @@ class AeccEmsSwitch(CoordinatorEntity[AeccBatteryCoordinator], SwitchEntity):
             _LOGGER.error("Failed to enable EMS")
 
     async def async_turn_off(self, **kwargs) -> None:
-        resp = await self.coordinator.client.set_control_parameters({REG_EMS_ENABLE: "0"})
+        resp = await self.coordinator.client.set_control_parameters(
+            {
+                REG_EMS_ENABLE: "0",
+                REG_CONTROL_TIME1: SLOT_DISABLED,
+            }
+        )
         if resp is not None:
             self._optimistic = False
             self.async_write_ha_state()

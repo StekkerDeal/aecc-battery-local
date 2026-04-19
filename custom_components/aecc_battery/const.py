@@ -47,6 +47,10 @@ REG_MIN_SOC = "3023"  # Minimum discharge SOC  (confirmed: currently 10)
 REG_MAX_SOC = "3024"  # Maximum charge SOC     (confirmed: currently 98)
 REG_MAX_FEED_POWER = "3039"  # Max feed power in W    (confirmed: currently 2400)
 
+# Empty schedule slot - clears the active time slot so the firmware won't
+# auto-re-enable EMS after a disable.
+SLOT_DISABLED = "0,00:00,00:00,0,0,0,0,0,0,100,10"
+
 # Work modes (human-readable names for the Select entity)
 MODE_SELF_CONSUMPTION = "Self-Consumption (AI)"
 MODE_CUSTOM = "Custom / Manual"

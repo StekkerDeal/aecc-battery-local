@@ -82,10 +82,6 @@ _FIELD_MAP: dict[str, list[tuple[str, str, float]]] = {
     ],
 }
 
-_SLOT_DISABLED = "0,00:00,00:00,0,0,0,0,0,0,100,10"
-_CHARGING_SOC = 100
-_DISCHARGING_SOC = 10
-
 
 class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(

@@ -43,13 +43,14 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 |---|---|---|---|
 | **Sunpura** | S2400 | Fully tested | PV input and multi-battery setups confirmed working |
 | **Lunergy** | Hub 2400 AC | Fully tested | TCP connection can be flaky; the integration handles reconnects automatically |
+| **AEG** | Solarcube | Community confirmed | Works out of the box ([#1](https://github.com/StekkerDeal/aecc-battery-local/issues/1)) |
+| **Voltdeer** | SR5000 | Community confirmed | Works out of the box |
 
 ### Expected Compatible (Untested)
 
 | Brand | Model | Notes |
 |---|---|---|
-| **Voltdeer** | SR | Same AECC platform, should work out of the box |
-| **AEG** | Solarcube | Same AECC platform, should work out of the box |
+| **JET** | GreenArk Pro | Same AECC platform, should work out of the box |
 | Other AECC brands | — | Any battery using the AECC / ai-ec.cloud platform may work |
 
 **Have a different AECC brand?** We'd love to hear from you. Install the integration, try it out, and [open an issue](https://github.com/StekkerDeal/aecc-battery-local/issues) to let us know if it works (or doesn't). Your feedback helps us expand the tested battery list.
