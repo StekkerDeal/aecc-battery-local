@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
@@ -146,9 +145,7 @@ def test_max_power_default(hass: HomeAssistant, mock_client) -> None:
 
 def test_max_power_extended(hass: HomeAssistant, mock_client) -> None:
     """Test extended max power is 2400W."""
-    coord = AeccBatteryCoordinator(
-        hass, mock_client, "Test", extended_power=True
-    )
+    coord = AeccBatteryCoordinator(hass, mock_client, "Test", extended_power=True)
     assert coord.max_register_power == MAX_BATTERY_POWER_W
 
 
@@ -196,13 +193,9 @@ async def test_set_battery_control_idle(
     assert slot.startswith("0,")
 
 
-async def test_set_battery_control_extended_writes_max_feed(
-    hass: HomeAssistant, mock_client
-) -> None:
+async def test_set_battery_control_extended_writes_max_feed(hass: HomeAssistant, mock_client) -> None:
     """Test extended power mode writes REG_MAX_FEED_POWER."""
-    coord = AeccBatteryCoordinator(
-        hass, mock_client, "Test", extended_power=True
-    )
+    coord = AeccBatteryCoordinator(hass, mock_client, "Test", extended_power=True)
     coord.data = {"SSumInfoList": {}}
     mock_client.set_control_parameters.return_value = {"result": "ok"}
     await coord.async_set_battery_control("Charge", 2000)
@@ -282,9 +275,7 @@ async def test_update_data_success(
     coordinator: AeccBatteryCoordinator,
 ) -> None:
     """Test successful data update resets failure counter."""
-    coordinator.client.get_energy_parameters.return_value = {
-        "SSumInfoList": {"AverageBatteryAverageSOC": "80"}
-    }
+    coordinator.client.get_energy_parameters.return_value = {"SSumInfoList": {"AverageBatteryAverageSOC": "80"}}
     data = await coordinator._async_update_data()
     assert data["SSumInfoList"]["AverageBatteryAverageSOC"] == "80"
     assert coordinator._consecutive_failures == 0
@@ -369,9 +360,7 @@ async def test_read_initial_state_disabled(
     coordinator: AeccBatteryCoordinator,
 ) -> None:
     """Test disabled mode is detected when EMS is off."""
-    coordinator.client.get_control_parameters.return_value = {
-        "ControlInfo": {"3000": "0"}
-    }
+    coordinator.client.get_control_parameters.return_value = {"ControlInfo": {"3000": "0"}}
     await coordinator.async_read_initial_state()
     assert coordinator.initial_work_mode == "Disabled"
 

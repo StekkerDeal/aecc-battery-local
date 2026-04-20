@@ -6,15 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from homeassistant.core import HomeAssistant
-
 from custom_components.aecc_battery.const import (
     CONF_HOST,
     CONF_MANUFACTURER,
     CONF_MODEL,
     CONF_NAME,
     CONF_PORT,
-    DOMAIN,
 )
 
 
@@ -27,9 +24,7 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 @pytest.fixture
 def mock_tcp_client():
     """Return a mocked AeccTcpClient."""
-    with patch(
-        "custom_components.aecc_battery.tcp_client.AeccTcpClient", autospec=True
-    ) as mock_cls:
+    with patch("custom_components.aecc_battery.tcp_client.AeccTcpClient", autospec=True) as mock_cls:
         client = mock_cls.return_value
         client.host = "192.168.1.100"
         client.port = 8080

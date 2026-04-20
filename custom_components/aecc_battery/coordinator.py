@@ -71,7 +71,11 @@ _FIELD_MAP: dict[str, list[tuple[str, str, float]]] = {
     ],
     "grid_export_power": [],  # Derived in sensor from grid_power (positive values only)
     "backup_power": [
-        ("storage", "OffGridLoadPower", 0.1),
+        # OffGridLoadPower is reported in watts directly, unlike other storage
+        # power fields which are in deciwatts (0.1x scale). Verified against a
+        # 2000W heater test on 2026-04-20: battery_discharging_power read
+        # ~2040W while backup_power with the 0.1 multiplier read ~193W.
+        ("storage", "OffGridLoadPower", 1.0),
         ("summary", "TotalBackUpPower", 1.0),
     ],
     "pv1_power": [
