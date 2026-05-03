@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -10,7 +12,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .cleaners import CLEANERS, CleanerContext
 from .const import (
+    DEFAULT_BRAND_PROFILE,
     DOMAIN,
     MAX_BATTERY_POWER_W,
     MAX_REGISTER_POWER_DEFAULT,
@@ -97,6 +101,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         manufacturer: str = "AECC",
         model: str = "",
         extended_power: bool = False,
+        brand_profile: dict[str, Any] | None = None,
     ) -> None:
         self.client = client
         self.device_name = device_name
@@ -117,6 +122,16 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.initial_max_soc: int | None = None
         self.initial_work_mode: str | None = None
         self.initial_power: int | None = None
+        # Per-brand cleaning profile (thresholds for the physics-aware
+        # cleaners). Defaults to the conservative "Other" profile so a
+        # missing/typo'd brand still gets light protection without rejecting
+        # legitimate readings.
+        self.brand_profile: dict[str, Any] = dict(brand_profile or DEFAULT_BRAND_PROFILE)
+        # State for the cleaner pipeline, last accepted (cleaned) value and
+        # timestamp per canonical key. Used for rate-of-change checks and
+        # for the hybrid hold-then-unavailable behavior in AeccSensor.
+        self._cleaner_last_accepted: dict[str, float] = {}
+        self._cleaner_last_accepted_at: dict[str, float] = {}
         super().__init__(
             hass,
             _LOGGER,
@@ -224,19 +239,173 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def summary_val(self, key: str, default: Any = None) -> Any:
         return self.summary.get(key, default)
 
+    def _wall_power_signal_w(self) -> float | None:
+        """Best-effort wall-side power magnitude for cleaner physics checks.
+
+        Returns a signed value: positive when the battery is charging,
+        negative when discharging. None when neither AECC source has the
+        data (cleaners then skip checks that depend on observable flow).
+
+        Reads raw fields directly to avoid triggering nested cleaner calls
+        from get_value, this is the activity signal cleaners depend on,
+        not a published sensor value.
+        """
+        for field, scale in (
+            ("AcChargingPower", 0.1),
+            ("BatteryChargingPower", 0.1),
+        ):
+            val = self.storage.get(field)
+            if val is not None:
+                try:
+                    charge = float(val) * scale
+                    if charge > 0:
+                        return charge
+                except (TypeError, ValueError):
+                    pass
+        for field, scale in (
+            ("BatteryDischargingPower", 0.1),
+            ("AcChargingPower", 0.1),
+        ):
+            val = self.storage.get(field)
+            if val is not None:
+                try:
+                    discharge = float(val) * scale
+                    if discharge > 0:
+                        return -discharge if field == "BatteryDischargingPower" else discharge
+                except (TypeError, ValueError):
+                    pass
+        # Fall back to the summary fields (Lunergy primary).
+        ac = self.summary.get("TotalACChargePower")
+        out = self.summary.get("TotalBatteryOutputPower")
+        try:
+            ac_f = float(ac) if ac is not None else 0.0
+            out_f = float(out) if out is not None else 0.0
+            if ac_f > 0:
+                return ac_f
+            if out_f > 0:
+                return -out_f
+            if ac is not None or out is not None:
+                return 0.0
+        except (TypeError, ValueError):
+            pass
+        return None
+
     def get_value(self, canonical_key: str, default: Any = None) -> Any:
         entries = _FIELD_MAP.get(canonical_key)
         if not entries:
             return default
+        raw_value: float | None = None
         for source, field, scale in entries:
             container = self.storage if source == "storage" else self.summary
             val = container.get(field)
             if val is not None:
                 try:
-                    return round(float(val) * scale, 1)
+                    raw_value = round(float(val) * scale, 1)
+                    break
                 except (TypeError, ValueError):
                     continue
-        return default
+        if raw_value is None:
+            return default
+
+        cleaner = CLEANERS.get(canonical_key)
+        if cleaner is None:
+            return raw_value
+
+        ctx = CleanerContext(
+            key=canonical_key,
+            raw_value=raw_value,
+            last_accepted_value=self._cleaner_last_accepted.get(canonical_key),
+            last_accepted_at=self._cleaner_last_accepted_at.get(canonical_key),
+            now=time.time(),
+            wall_power_w=self._wall_power_signal_w(),
+            profile=self.brand_profile,
+        )
+        cleaned = cleaner(ctx)
+        if cleaned is None:
+            _LOGGER.debug(
+                "Cleaner rejected %s=%s (last_accepted=%s, wall_power=%s)",
+                canonical_key,
+                raw_value,
+                ctx.last_accepted_value,
+                ctx.wall_power_w,
+            )
+            return None
+        # Record the accepted value/timestamp so the next call has fresh
+        # state for rate-of-change checks. Only updates on accept.
+        self._cleaner_last_accepted[canonical_key] = cleaned
+        self._cleaner_last_accepted_at[canonical_key] = ctx.now
+        return cleaned
+
+    def cleaner_last_accepted_at(self, canonical_key: str) -> float | None:
+        """Last epoch-second timestamp when this key passed the cleaner.
+
+        AeccSensor uses this for the hybrid hold-then-unavailable behavior:
+        once readings have been rejected for longer than the brand's
+        ``hold_last_value_seconds``, the entity goes unavailable instead
+        of indefinitely showing a stale value.
+        """
+        return self._cleaner_last_accepted_at.get(canonical_key)
+
+    # Delay between a SET command and the readback that verifies the device
+    # actually accepted the change. Some AECC devices apply writes lazily;
+    # a too-fast readback can hit the pre-write state and produce false
+    # "mismatch" warnings. Half a second is empirically enough for Lunergy
+    # and Sunpura without noticeably slowing user-facing UI updates.
+    _WRITE_VERIFY_DELAY_SECONDS: float = 0.5
+
+    async def _verify_write(
+        self,
+        expected: dict[str, str],
+        operation: str,
+    ) -> None:
+        """Re-read registers after a write and warn on mismatch.
+
+        Best-effort verification: the SET response already returned OK
+        (otherwise the caller would have logged + returned False), so we
+        do NOT change the return value of the calling write method. We
+        only surface a WARNING when the device claimed success but the
+        actual register state diverges, which is a real failure mode on
+        AECC devices under load. Schedule slot strings (the long CSV) are
+        log-only and never compared character-for-character because the
+        device may normalise whitespace or trailing zeros.
+        """
+        try:
+            await asyncio.sleep(self._WRITE_VERIFY_DELAY_SECONDS)
+            reg_addrs = [int(k) for k in expected.keys()]
+            resp = await self.client.get_control_parameters(reg_addrs)
+            if resp is None:
+                _LOGGER.debug("Write-back verify for %s: no response (skipping)", operation)
+                return
+            actual = resp.get("ControlInfo") or resp.get("GetParameters") or {}
+            if not isinstance(actual, dict):
+                return
+            for reg, expected_val in expected.items():
+                if reg == REG_CONTROL_TIME1:
+                    # Schedule slot is a CSV string, device may reorder or
+                    # rewrite parts. Log-only, no equality check.
+                    actual_val = actual.get(reg) or actual.get(int(reg))
+                    _LOGGER.debug(
+                        "Write-back verify for %s: %s = %r (expected %r)",
+                        operation,
+                        reg,
+                        actual_val,
+                        expected_val,
+                    )
+                    continue
+                actual_val = actual.get(reg) or actual.get(int(reg))
+                if actual_val is None:
+                    continue
+                if str(actual_val).strip() != str(expected_val).strip():
+                    _LOGGER.warning(
+                        "Write-back verify mismatch for %s: register %s expected %r, "
+                        "device reports %r, write may have been silently dropped",
+                        operation,
+                        reg,
+                        expected_val,
+                        actual_val,
+                    )
+        except (TimeoutError, OSError, asyncio.IncompleteReadError) as exc:
+            _LOGGER.debug("Write-back verify for %s failed: %s", operation, exc)
 
     async def async_set_battery_control(self, direction: str, power_w: int) -> bool:
         has_storage = bool(self.data and self.data.get("Storage_list"))
@@ -285,6 +454,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return False
 
         _LOGGER.debug("SET battery_control response: %s", resp)
+        await self._verify_write(payload, f"battery_control({direction}, {power_w}W)")
         return True
 
     async def async_set_power_setpoint(self, watts: float) -> bool:
@@ -306,19 +476,27 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if resp is None:
             _LOGGER.warning("SET work_mode %r failed - no response", mode)
-        return resp is not None
+            return False
+        await self._verify_write(registers, f"work_mode({mode})")
+        return True
 
     async def async_set_min_soc(self, value: int) -> bool:
         self._commanded_min_soc = value
-        resp = await self.client.set_control_parameters({REG_MIN_SOC: str(value)})
-
-        return resp is not None
+        payload = {REG_MIN_SOC: str(value)}
+        resp = await self.client.set_control_parameters(payload)
+        if resp is None:
+            return False
+        await self._verify_write(payload, f"min_soc({value}%)")
+        return True
 
     async def async_set_max_soc(self, value: int) -> bool:
         self._commanded_max_soc = value
-        resp = await self.client.set_control_parameters({REG_MAX_SOC: str(value)})
-
-        return resp is not None
+        payload = {REG_MAX_SOC: str(value)}
+        resp = await self.client.set_control_parameters(payload)
+        if resp is None:
+            return False
+        await self._verify_write(payload, f"max_soc({value}%)")
+        return True
 
     async def async_read_initial_state(self) -> None:
         resp = await self.client.get_control_parameters(

@@ -21,13 +21,16 @@ Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, A
 
 ## Features
 
-- **100% local** — communicates directly with your battery over TCP (port 8080)
-- **5-second polling** — near real-time updates with intelligent failure tolerance
-- **Energy Dashboard ready** — accumulated kWh sensors (`total_increasing`) for the HA Energy Dashboard
-- **Full battery control** — direction (Charge/Discharge/Idle), power slider (0-800W, extendable to 2400W), SOC limits
-- **Work mode selector** — Self-Consumption (AI), Custom/Manual, Disabled
-- **Multi-brand** — select your brand during setup; DeviceInfo shows correct manufacturer and model
-- **Multi-language** — English, Dutch, German, French
+- **100% local**: communicates directly with your battery over TCP (port 8080)
+- **5-second polling**: near real-time updates with intelligent failure tolerance
+- **Physics-aware sensor cleaning**: rejects sensor glitches (`SOC=0` during active discharge, impossible rate-of-change spikes) before they reach Home Assistant or pollute the Energy Dashboard. Tuned per brand.
+- **Hybrid availability**: entities hold their last known value through brief sensor blips, then transition to `unavailable` after a sustained outage so automations and dashboards see an honest signal.
+- **Write-back verification**: every control command is re-read after writing; mismatches are logged so silent firmware drops become visible.
+- **Energy Dashboard ready**: accumulated kWh sensors (`total_increasing`) for the HA Energy Dashboard
+- **Full battery control**: direction (Charge/Discharge/Idle), power slider (0-800W, extendable to 2400W), SOC limits
+- **Work mode selector**: Self-Consumption (AI), Custom/Manual, Disabled
+- **Multi-brand**: select your brand during setup; DeviceInfo shows correct manufacturer and model
+- **Multi-language**: English, Dutch, German, French
 
 ---
 
@@ -42,7 +45,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | Brand | Model | Status | Notes |
 |---|---|---|---|
 | **Sunpura** | S2400 | Fully tested | PV input and multi-battery setups confirmed working |
-| **Lunergy** | Hub 2400 AC | Fully tested | TCP connection can be flaky; the integration handles reconnects automatically |
+| **Lunergy** | Hub 2400 AC | Fully tested | TCP connection can be flaky; the integration handles reconnects automatically. Per-brand sensor cleaning rejects the known sensor-stuck-at-zero pattern. |
 | **AEG** | Solarcube | Community confirmed | Works out of the box ([#1](https://github.com/StekkerDeal/aecc-battery-local/issues/1)) |
 | **Voltdeer** | SR5000 | Community confirmed | Works out of the box |
 
@@ -51,7 +54,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | Brand | Model | Notes |
 |---|---|---|
 | **JET** | GreenArk Pro | Same AECC platform, should work out of the box |
-| Other AECC brands | — | Any battery using the AECC / ai-ec.cloud platform may work |
+| Other AECC brands |: | Any battery using the AECC / ai-ec.cloud platform may work |
 
 **Have a different AECC brand?** We'd love to hear from you. Install the integration, try it out, and [open an issue](https://github.com/StekkerDeal/aecc-battery-local/issues) to let us know if it works (or doesn't). Your feedback helps us expand the tested battery list.
 
@@ -98,17 +101,38 @@ You can update all settings at any time via the integration's **Configure** butt
 
 By default, the AECC platform limits power to **800W** (both locally and in the app). The battery hardware supports up to 2400W, but two settings must be changed to unlock higher power:
 
-**Step 1 — AECC App (one-time, per device):**
+**Step 1: AECC App (one-time, per device):**
 
 The AECC app has an "On Grid Output" setting (under Operating Mode Settings) that caps the maximum power the inverter will deliver. The factory default is **800W**. This setting is **not accessible via local TCP** and must be configured in the AECC app. Set it to your desired maximum (e.g. 2400W).
 
-**Step 2 — Integration:**
+**Step 2: Integration:**
 
 1. Go to the integration's **Configure** button
 2. Enable **Extended power range (up to 2400W)**
 3. The power slider increases from 0-800W to 0-2400W
 
 > **Disclaimer:** Only enable extended power (above 800W) when the battery is connected to its own dedicated circuit.
+
+---
+
+## Sensor Reliability
+
+The AECC TCP protocol on some devices (notably Lunergy) occasionally returns sensor values that are physically impossible, for example `SOC=0` while the battery is actively discharging at hundreds of watts. The underlying datalog gateway loses sync with the BMS and the JSON response defaults missing fields to `0` rather than marking them unavailable. Without protection these readings would pollute the Energy Dashboard accumulators and trigger automations on bogus thresholds.
+
+The integration applies a small physics-aware filter before publishing readings to Home Assistant:
+
+| Check | What it rejects |
+|---|---|
+| Zero-during-active-flow | `SOC=0` (or `power=0` on Lunergy) while the battery is clearly cycling |
+| Rate-of-change | SOC changes faster than physically possible from one poll to the next |
+
+When a reading is rejected, the entity holds its last known good value for up to **2 minutes** so brief blips don't break charts or automations. After that window the entity transitions to `unavailable` so prolonged sensor failures surface honestly. As soon as the cleaner accepts a reading again, the entity returns to normal.
+
+**Per-brand thresholds.** The brand you select during setup determines the cleaning sensitivity. **Lunergy** gets the strictest profile (the SOC-stuck-at-zero pattern is documented on this device). **Sunpura, Voltdeer, and AEG** get a permissive profile that only catches obvious physical impossibilities. **Other** uses a conservative middle setting. No user-facing configuration is needed.
+
+### Write-back verification
+
+Every control command (direction, power, work mode, SOC limits) is automatically re-read 0.5 seconds after writing. If the device reports a value that differs from what was requested, the integration logs a `WARNING` so silent firmware drops become visible. The write itself still returns success based on the SET response, the verification is best-effort and does not change the public API.
 
 ---
 
@@ -165,8 +189,8 @@ Energy sensors use Riemann sum integration (the AECC TCP protocol does not expos
 ### Direction + Power
 
 Two entities work together:
-- **Battery Direction** (select) — Charge, Discharge, or Idle
-- **Battery Power** (slider) — 0-800W (or 0-2400W with extended power)
+- **Battery Direction** (select): Charge, Discharge, or Idle
+- **Battery Power** (slider): 0-800W (or 0-2400W with extended power)
 
 Selecting a direction automatically switches to Custom mode and writes the schedule register.
 
@@ -180,8 +204,8 @@ Selecting a direction automatically switches to Custom mode and writes the sched
 
 ### SOC Limits
 
-- **Discharge Limit** — stops discharging at this SOC (default 10%)
-- **Charge Limit** — stops charging at this SOC (default 98%)
+- **Discharge Limit**: stops discharging at this SOC (default 10%)
+- **Charge Limit**: stops charging at this SOC (default 98%)
 
 ---
 
@@ -190,7 +214,7 @@ Selecting a direction automatically switches to Custom mode and writes the sched
 If you have an AECC-platform battery from a brand not yet listed as tested:
 
 1. Install the integration and select your brand (or "Other")
-2. **Start with monitoring only** — check that sensors return data and values look correct
+2. **Start with monitoring only**, check that sensors return data and values look correct
 3. Only try control features after confirming sensors work
 4. Open an issue or PR to let us know your results
 
@@ -225,4 +249,4 @@ Maintained by [StekkerDeal](https://stekkerdeal.nl/).
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT, see [LICENSE](LICENSE)

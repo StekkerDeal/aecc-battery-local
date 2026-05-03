@@ -29,19 +29,25 @@ def mock_client():
     client = AsyncMock()
     client.host = "192.168.1.100"
     client.port = 8080
+    # Default the readback to None so write-verify exits silently in SET
+    # tests that don't explicitly stub it. Individual tests can override.
+    client.get_control_parameters = AsyncMock(return_value=None)
     return client
 
 
 @pytest.fixture
 def coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
     """Return a coordinator with mocked client."""
-    return AeccBatteryCoordinator(
+    coord = AeccBatteryCoordinator(
         hass,
         mock_client,
         device_name="Test Battery",
         manufacturer="Sunpura",
         model="S2400",
     )
+    # Skip the post-write asyncio.sleep so SET tests don't each pause 500ms.
+    coord._WRITE_VERIFY_DELAY_SECONDS = 0
+    return coord
 
 
 # ── DeviceInfo ──────────────────────────────────────────────────────────────

@@ -10,12 +10,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
+    BRAND_PROFILES,
     CONF_EXTENDED_POWER,
     CONF_HOST,
     CONF_MANUFACTURER,
     CONF_MODEL,
     CONF_NAME,
     CONF_PORT,
+    DEFAULT_BRAND_PROFILE,
     DEFAULT_TIMEOUT,
     DOMAIN,
 )
@@ -42,6 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(f"Cannot connect to {host}:{port} - {exc}") from exc
 
     extended_power = entry.options.get(CONF_EXTENDED_POWER, False)
+    brand_profile = BRAND_PROFILES.get(manufacturer, DEFAULT_BRAND_PROFILE)
     coordinator = AeccBatteryCoordinator(
         hass,
         client,
@@ -49,6 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         manufacturer=manufacturer,
         model=model,
         extended_power=extended_power,
+        brand_profile=brand_profile,
     )
     await coordinator.async_config_entry_first_refresh()
 

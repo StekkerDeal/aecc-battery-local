@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
@@ -110,11 +111,41 @@ class AeccSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
         if val is not None:
             self._last_value = val
             return val
+        # Cleaner rejected the reading (or it was missing entirely).
+        # Fall back to the last accepted value, but only while we're
+        # still inside the hybrid "hold last value" window, beyond that
+        # we report None so HA marks the entity unavailable rather than
+        # publishing indefinitely-stale data.
+        if not self._within_hold_window():
+            return None
         return self._last_value
 
     @property
     def available(self) -> bool:
-        return self._last_value is not None or self.coordinator.last_update_success
+        if self._last_value is None:
+            return self.coordinator.last_update_success
+        if self._within_hold_window():
+            return True
+        # Hold window has expired with no fresh accepted reading ,
+        # entity goes unavailable until the cleaner accepts again.
+        return False
+
+    def _within_hold_window(self) -> bool:
+        """True while the entity may keep returning its last accepted value.
+
+        After a cleaner-rejected reading, the entity holds the previous
+        good value for ``hold_last_value_seconds`` (per brand profile).
+        Beyond that window we surface the failure as unavailable instead
+        of continuing to publish stale data, honest signal to users
+        and automations that the underlying sensor has stopped working.
+        """
+        last_accepted_at = self.coordinator.cleaner_last_accepted_at(self._canonical_key)
+        if last_accepted_at is None:
+            # No cleaner state yet, treat as fresh (don't hide the entity
+            # before we've seen any accepted reading).
+            return True
+        hold_seconds = float(self.coordinator.brand_profile.get("hold_last_value_seconds", 120))
+        return (time.time() - last_accepted_at) <= hold_seconds
 
 
 class AeccEnergySensor(CoordinatorEntity[AeccBatteryCoordinator], RestoreEntity, SensorEntity):
