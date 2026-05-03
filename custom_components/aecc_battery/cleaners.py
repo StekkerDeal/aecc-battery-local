@@ -92,17 +92,20 @@ def clean_soc(ctx: CleanerContext) -> float | None:
     return raw
 
 
-def clean_power_during_active_status(ctx: CleanerContext) -> float | None:
-    """Reject 0-watt readings when the battery is clearly active.
+def clean_charge_power(ctx: CleanerContext) -> float | None:
+    """Reject 0-watt charge readings when the battery is actively charging.
 
     Conservative: only fires when ``power_zero_reject_during_status_active``
-    is enabled in the brand profile (default off, most brands don't need
-    this). When enabled, mirrors the SOC zero-during-active check using the
-    wall_power_w signal as the activity indicator.
+    is enabled in the brand profile (default off). When enabled, rejects
+    raw=0 readings ONLY when the wall-side power signal indicates active
+    charging (positive flow above the configured threshold).
 
-    Used for charge/discharge power readings that flow into energy
-    accumulators. A 0-watt blip during real flow would otherwise integrate
-    a downward step into the kWh totals.
+    Crucially, we do NOT reject charge=0 when the battery is discharging
+    or idle: that's the correct, expected reading. The previous non-
+    directional check produced false rejections that made AC Charging
+    Power flicker to "unavailable" during normal discharge operation.
+
+    Applies to: ``ac_charging_power``, ``battery_charging_power``.
     """
     if not ctx.profile.get("power_zero_reject_during_status_active", False):
         return ctx.raw_value
@@ -111,18 +114,45 @@ def clean_power_during_active_status(ctx: CleanerContext) -> float | None:
     if ctx.wall_power_w is None:
         return ctx.raw_value
     threshold_w = float(ctx.profile.get("soc_zero_reject_during_active_w", 100))
-    if abs(ctx.wall_power_w) > threshold_w:
+    # Charge sensors only get rejected when wall is actively CHARGING.
+    if ctx.wall_power_w > threshold_w:
+        return None
+    return ctx.raw_value
+
+
+def clean_discharge_power(ctx: CleanerContext) -> float | None:
+    """Reject 0-watt discharge readings when the battery is actively discharging.
+
+    Mirror of ``clean_charge_power`` for the opposite direction. Only
+    rejects raw=0 when the wall-side power signal indicates active
+    discharging (negative flow below the negated threshold). Accepts 0
+    during charging or idle, since that's the correct reading there.
+
+    Applies to: ``battery_discharging_power``.
+    """
+    if not ctx.profile.get("power_zero_reject_during_status_active", False):
+        return ctx.raw_value
+    if ctx.raw_value != 0:
+        return ctx.raw_value
+    if ctx.wall_power_w is None:
+        return ctx.raw_value
+    threshold_w = float(ctx.profile.get("soc_zero_reject_during_active_w", 100))
+    # Discharge sensors only get rejected when wall is actively DISCHARGING.
+    if ctx.wall_power_w < -threshold_w:
         return None
     return ctx.raw_value
 
 
 # Map canonical sensor key -> cleaner function. Keys not in this map go
 # unfiltered. New cleaners register here without touching the coordinator.
+#
+# PV sensors deliberately have no cleaner: a 0 reading there is genuinely
+# ambiguous (panels not producing vs sensor glitch) and the wall-power
+# signal can't disambiguate, since PV can be active while the battery is
+# either charging or discharging.
 CLEANERS: dict[str, Any] = {
     "battery_soc": clean_soc,
-    "ac_charging_power": clean_power_during_active_status,
-    "battery_charging_power": clean_power_during_active_status,
-    "battery_discharging_power": clean_power_during_active_status,
-    "pv_power": clean_power_during_active_status,
-    "pv_charging_power": clean_power_during_active_status,
+    "ac_charging_power": clean_charge_power,
+    "battery_charging_power": clean_charge_power,
+    "battery_discharging_power": clean_discharge_power,
 }
