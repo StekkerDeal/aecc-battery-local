@@ -30,7 +30,7 @@ KNOWN_BRANDS = [
 ]
 
 # ─── Sensor cleaning profile ─────────────────────────────────────────────────
-# Per-brand thresholds for the physics-aware sensor cleaner.
+# Per-brand thresholds for the physics-aware SOC cleaner.
 # - soc_zero_reject_during_active_w: reject SOC=0 readings when the absolute
 #   wall-side power exceeds this threshold (battery is clearly in motion, so
 #   SOC cannot have collapsed to 0 instantaneously).
@@ -40,9 +40,6 @@ KNOWN_BRANDS = [
 #   accepted value after readings start being rejected before going
 #   "unavailable". Hybrid pattern: smooth charts for transient blips, honest
 #   signal for prolonged sensor failure.
-# - power_zero_reject_during_status_active: when True, reject power readings
-#   that are 0 while battery_status indicates active flow (mirrors SOC logic
-#   for the energy-accumulator integrators).
 #
 # Lunergy is the known-bad device (sustained SOC=0 lockups during active
 # discharge). Sunpura / others are stable and get a permissive profile that
@@ -51,40 +48,35 @@ KNOWN_BRANDS = [
 
 CONF_BRAND_PROFILE_KEY = "brand_profile"
 
-BRAND_PROFILES: dict[str, dict[str, float | int | bool]] = {
+BRAND_PROFILES: dict[str, dict[str, float | int]] = {
     "Lunergy": {
         "soc_zero_reject_during_active_w": 50,
         "soc_max_rate_pct_per_min": 5.0,
         "hold_last_value_seconds": 120,
-        "power_zero_reject_during_status_active": True,
     },
     "Sunpura": {
         "soc_zero_reject_during_active_w": 200,
         "soc_max_rate_pct_per_min": 10.0,
         "hold_last_value_seconds": 120,
-        "power_zero_reject_during_status_active": False,
     },
     "Voltdeer": {
         "soc_zero_reject_during_active_w": 200,
         "soc_max_rate_pct_per_min": 10.0,
         "hold_last_value_seconds": 120,
-        "power_zero_reject_during_status_active": False,
     },
     "AEG": {
         "soc_zero_reject_during_active_w": 200,
         "soc_max_rate_pct_per_min": 10.0,
         "hold_last_value_seconds": 120,
-        "power_zero_reject_during_status_active": False,
     },
     "Other": {
         "soc_zero_reject_during_active_w": 100,
         "soc_max_rate_pct_per_min": 8.0,
         "hold_last_value_seconds": 120,
-        "power_zero_reject_during_status_active": False,
     },
 }
 
-DEFAULT_BRAND_PROFILE: dict[str, float | int | bool] = BRAND_PROFILES["Other"]
+DEFAULT_BRAND_PROFILE: dict[str, float | int] = BRAND_PROFILES["Other"]
 
 # ─── Control register addresses (confirmed by register scan) ─────────────────
 REG_EMS_ENABLE = "3000"  # 0 = off, 1 = on

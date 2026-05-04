@@ -6,8 +6,6 @@ import pytest
 
 from custom_components.aecc_battery.cleaners import (
     CleanerContext,
-    clean_charge_power,
-    clean_discharge_power,
     clean_soc,
 )
 from custom_components.aecc_battery.const import BRAND_PROFILES, DEFAULT_BRAND_PROFILE
@@ -137,134 +135,6 @@ class TestCleanSoc:
         assert result is None
 
 
-# ── clean_charge_power (directional) ─────────────────────────────────────────
-
-
-class TestCleanChargePower:
-    def test_pass_through_when_check_disabled(self) -> None:
-        """Sunpura's profile disables the power-zero check (default off)."""
-        result = clean_charge_power(
-            _ctx(
-                raw_value=0.0,
-                wall_power_w=1000.0,
-                profile=BRAND_PROFILES["Sunpura"],
-            )
-        )
-        assert result == 0.0
-
-    def test_rejects_zero_during_active_charging(self) -> None:
-        """Charge=0 while wall shows active charging (positive flow) is a glitch."""
-        result = clean_charge_power(
-            _ctx(
-                raw_value=0.0,
-                wall_power_w=1000.0,  # positive: charging
-                profile=BRAND_PROFILES["Lunergy"],
-            )
-        )
-        assert result is None
-
-    def test_accepts_zero_during_discharge(self) -> None:
-        """Charge=0 while battery is discharging is the CORRECT reading.
-
-        This is the v1.2.1 regression fix: the previous non-directional
-        cleaner wrongly rejected this case, causing AC Charging Power to
-        flicker to 'unavailable' during normal discharge operation.
-        """
-        result = clean_charge_power(
-            _ctx(
-                raw_value=0.0,
-                wall_power_w=-630.0,  # negative: discharging
-                profile=BRAND_PROFILES["Lunergy"],
-            )
-        )
-        assert result == 0.0
-
-    def test_accepts_zero_during_idle(self) -> None:
-        """Charge=0 with wall near idle is the correct reading."""
-        result = clean_charge_power(
-            _ctx(
-                raw_value=0.0,
-                wall_power_w=10.0,  # below 50W threshold
-                profile=BRAND_PROFILES["Lunergy"],
-            )
-        )
-        assert result == 0.0
-
-    def test_accepts_nonzero_value_unchanged(self) -> None:
-        """Non-zero readings are always accepted regardless of activity."""
-        result = clean_charge_power(
-            _ctx(
-                raw_value=750.0,
-                wall_power_w=-1500.0,
-                profile=BRAND_PROFILES["Lunergy"],
-            )
-        )
-        assert result == 750.0
-
-    def test_accepts_zero_when_wall_power_unknown(self) -> None:
-        """No wall power signal: cannot infer activity, accept the zero."""
-        result = clean_charge_power(
-            _ctx(
-                raw_value=0.0,
-                wall_power_w=None,
-                profile=BRAND_PROFILES["Lunergy"],
-            )
-        )
-        assert result == 0.0
-
-
-# ── clean_discharge_power (directional, mirror) ──────────────────────────────
-
-
-class TestCleanDischargePower:
-    def test_rejects_zero_during_active_discharging(self) -> None:
-        """Discharge=0 while wall shows active discharging (negative flow) is a glitch."""
-        result = clean_discharge_power(
-            _ctx(
-                raw_value=0.0,
-                wall_power_w=-1000.0,  # negative: discharging
-                profile=BRAND_PROFILES["Lunergy"],
-            )
-        )
-        assert result is None
-
-    def test_accepts_zero_during_charging(self) -> None:
-        """Discharge=0 while battery is charging is the CORRECT reading.
-
-        Mirror of the v1.2.1 regression fix on the discharge sensor side.
-        """
-        result = clean_discharge_power(
-            _ctx(
-                raw_value=0.0,
-                wall_power_w=1000.0,  # positive: charging
-                profile=BRAND_PROFILES["Lunergy"],
-            )
-        )
-        assert result == 0.0
-
-    def test_accepts_zero_during_idle(self) -> None:
-        """Discharge=0 with wall near idle is the correct reading."""
-        result = clean_discharge_power(
-            _ctx(
-                raw_value=0.0,
-                wall_power_w=-10.0,  # within 50W threshold
-                profile=BRAND_PROFILES["Lunergy"],
-            )
-        )
-        assert result == 0.0
-
-    def test_disabled_profile_passes_through(self) -> None:
-        """Sunpura profile (check disabled) accepts zero regardless of wall."""
-        result = clean_discharge_power(
-            _ctx(
-                raw_value=0.0,
-                wall_power_w=-1000.0,
-                profile=BRAND_PROFILES["Sunpura"],
-            )
-        )
-        assert result == 0.0
-
-
 # ── BRAND_PROFILES sanity ────────────────────────────────────────────────────
 
 
@@ -275,4 +145,3 @@ def test_brand_profile_has_required_keys(brand: str) -> None:
     assert "soc_zero_reject_during_active_w" in profile
     assert "soc_max_rate_pct_per_min" in profile
     assert "hold_last_value_seconds" in profile
-    assert "power_zero_reject_during_status_active" in profile

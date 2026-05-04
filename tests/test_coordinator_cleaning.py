@@ -200,11 +200,8 @@ def test_default_profile_when_brand_unknown(hass: HomeAssistant, mock_client) ->
 
 
 def test_lunergy_profile_more_strict_than_sunpura() -> None:
-    """Sanity: Lunergy thresholds catch more pathology than Sunpura."""
+    """Sanity: Lunergy thresholds catch more SOC pathology than Sunpura."""
     lunergy = BRAND_PROFILES["Lunergy"]
     sunpura = BRAND_PROFILES["Sunpura"]
     assert lunergy["soc_zero_reject_during_active_w"] < sunpura["soc_zero_reject_during_active_w"]
-    assert (
-        lunergy["power_zero_reject_during_status_active"] is True
-        and sunpura["power_zero_reject_during_status_active"] is False
-    )
+    assert lunergy["soc_max_rate_pct_per_min"] < sunpura["soc_max_rate_pct_per_min"]
