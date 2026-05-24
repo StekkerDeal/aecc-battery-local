@@ -7,7 +7,7 @@
 
 A Home Assistant integration for **local TCP control** of AECC-platform home batteries. No cloud, no latency, no external dependencies.
 
-Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, and others.
+Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, AFERIY, and others.
 
 ---
 
@@ -48,6 +48,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | **Lunergy** | Hub 2400 AC | Fully tested | TCP connection can be flaky; the integration handles reconnects automatically. Per-brand sensor cleaning rejects the known sensor-stuck-at-zero pattern. |
 | **AEG** | Solarcube | Community confirmed | Works out of the box ([#1](https://github.com/StekkerDeal/aecc-battery-local/issues/1)) |
 | **Voltdeer** | SR5000 | Community confirmed | Works out of the box |
+| **AFERIY** | PS240 | Community confirmed | Multi-unit setup confirmed working ([#2](https://github.com/StekkerDeal/aecc-battery-local/issues/2)) |
 
 ### Expected Compatible (Untested)
 

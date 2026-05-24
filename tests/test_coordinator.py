@@ -19,6 +19,7 @@ from custom_components.aecc_battery.const import (
     REG_EMS_ENABLE,
     REG_MAX_FEED_POWER,
     REG_SCHEDULE_MODE,
+    SLOT_DISABLED,
 )
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
 
@@ -236,6 +237,10 @@ async def test_set_work_mode_self_consumption(
     assert payload[REG_AI_SMART_CHARGE] == "1"
     assert payload[REG_AI_SMART_DISC] == "1"
     assert payload[REG_CUSTOM_MODE] == "0"
+    # Must reset the schedule mode and clear the leftover custom slot,
+    # otherwise the device keeps running the previous schedule (issues #2, #3).
+    assert payload[REG_SCHEDULE_MODE] == "3"
+    assert payload[REG_CONTROL_TIME1] == SLOT_DISABLED
 
 
 async def test_set_work_mode_disabled(

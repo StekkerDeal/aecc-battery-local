@@ -26,6 +26,7 @@ KNOWN_BRANDS = [
     "Sunpura",
     "Voltdeer",
     "AEG",
+    "AFERIY",
     "Other",
 ]
 
@@ -65,6 +66,11 @@ BRAND_PROFILES: dict[str, dict[str, float | int]] = {
         "hold_last_value_seconds": 120,
     },
     "AEG": {
+        "soc_zero_reject_during_active_w": 200,
+        "soc_max_rate_pct_per_min": 10.0,
+        "hold_last_value_seconds": 120,
+    },
+    "AFERIY": {
         "soc_zero_reject_during_active_w": 200,
         "soc_max_rate_pct_per_min": 10.0,
         "hold_last_value_seconds": 120,
@@ -111,9 +117,18 @@ WORK_MODES = [MODE_SELF_CONSUMPTION, MODE_CUSTOM, MODE_DISABLED]
 MODE_REGISTERS = {
     MODE_SELF_CONSUMPTION: {
         REG_EMS_ENABLE: "1",
+        # Reset the schedule mode back to self-gen (3). The battery-control
+        # path sets this to 6 (custom schedule) and never resets it, so
+        # without this line switching back to Self-Consumption left the
+        # device running the previous custom schedule (issues #2, #3).
+        # Value 3 confirmed on AFERIY PS240; 6 = custom is confirmed on all.
+        REG_SCHEDULE_MODE: "3",
         REG_AI_SMART_CHARGE: "1",
         REG_AI_SMART_DISC: "1",
         REG_CUSTOM_MODE: "0",
+        # Clear the leftover manual time slot so the firmware stops executing
+        # the previous custom setpoint and hands control back to the AI.
+        REG_CONTROL_TIME1: SLOT_DISABLED,
     },
     MODE_CUSTOM: {
         REG_EMS_ENABLE: "1",
