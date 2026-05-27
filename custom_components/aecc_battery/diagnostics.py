@@ -147,6 +147,7 @@ async def async_get_config_entry_diagnostics(
         "initial_min_soc": coordinator.initial_min_soc,
         "initial_max_soc": coordinator.initial_max_soc,
         "initial_work_mode": coordinator.initial_work_mode,
+        "current_work_mode": coordinator.current_work_mode,
         "initial_power": coordinator.initial_power,
     }
 

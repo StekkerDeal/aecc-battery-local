@@ -7,7 +7,7 @@
 
 A Home Assistant integration for **local TCP control** of AECC-platform home batteries. No cloud, no latency, no external dependencies.
 
-Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, AFERIY, and others.
+Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, AFERIY, AccuMate, and others.
 
 ---
 
@@ -28,7 +28,7 @@ Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, A
 - **Write-back verification**: every control command is re-read after writing; mismatches are logged so silent firmware drops become visible.
 - **Energy Dashboard ready**: accumulated kWh sensors (`total_increasing`) for the HA Energy Dashboard
 - **Full battery control**: direction (Charge/Discharge/Idle), power slider (0-800W, extendable to 2400W), SOC limits
-- **Work mode selector**: Self-Consumption (AI), Custom/Manual, Disabled
+- **Work mode selector**: Self-Consumption (AI), Custom/Manual
 - **Multi-brand**: select your brand during setup; DeviceInfo shows correct manufacturer and model
 - **Multi-language**: English, Dutch, German, French
 
@@ -49,6 +49,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | **AEG** | Solarcube | Community confirmed | Works out of the box ([#1](https://github.com/StekkerDeal/aecc-battery-local/issues/1)) |
 | **Voltdeer** | SR5000 | Community confirmed | Works out of the box |
 | **AFERIY** | PS240 | Community confirmed | Multi-unit setup confirmed working ([#2](https://github.com/StekkerDeal/aecc-battery-local/issues/2)) |
+| **AccuMate** | Plug-In Battery | Community confirmed | Works out of the box ([#6](https://github.com/StekkerDeal/aecc-battery-local/issues/6)) |
 
 ### Expected Compatible (Untested)
 
@@ -168,7 +169,7 @@ Every control command (direction, power, work mode, SOC limits) is automatically
 | Battery Power | Number (slider) | Power target: 0-800W (or 0-2400W extended) |
 | Discharge Limit | Number (slider) | Min SOC before discharge stops (5-50%) |
 | Charge Limit | Number (slider) | Max SOC before charging stops (50-100%) |
-| Work Mode | Select | Self-Consumption (AI), Custom/Manual, Disabled |
+| Work Mode | Select | Self-Consumption (AI), Custom/Manual |
 | EMS Enabled | Switch | Master on/off for energy management |
 
 ---
@@ -193,7 +194,9 @@ Two entities work together:
 - **Battery Direction** (select): Charge, Discharge, or Idle
 - **Battery Power** (slider): 0-800W (or 0-2400W with extended power)
 
-Selecting a direction automatically switches to Custom mode and writes the schedule register.
+Selecting a direction (or moving the Power slider) automatically switches to Custom mode and writes the schedule register. The Work Mode selector reflects this and shows Custom.
+
+To stop the battery, set Battery Direction to Idle (or Power to 0). This holds an active 0 W setpoint. There is no separate "Disabled" mode, because turning EMS off does not reliably stop the battery (it hands control back to the device's own logic).
 
 ### Work Modes
 
@@ -201,7 +204,6 @@ Selecting a direction automatically switches to Custom mode and writes the sched
 |---|---|
 | Self-Consumption (AI) | Automatic charge/discharge based on solar and consumption |
 | Custom / Manual | Manual control via Direction + Power |
-| Disabled | EMS turned off |
 
 ### SOC Limits
 

@@ -27,6 +27,7 @@ KNOWN_BRANDS = [
     "Voltdeer",
     "AEG",
     "AFERIY",
+    "AccuMate",
     "Other",
 ]
 
@@ -75,6 +76,11 @@ BRAND_PROFILES: dict[str, dict[str, float | int]] = {
         "soc_max_rate_pct_per_min": 10.0,
         "hold_last_value_seconds": 120,
     },
+    "AccuMate": {
+        "soc_zero_reject_during_active_w": 200,
+        "soc_max_rate_pct_per_min": 10.0,
+        "hold_last_value_seconds": 120,
+    },
     "Other": {
         "soc_zero_reject_during_active_w": 100,
         "soc_max_rate_pct_per_min": 8.0,
@@ -107,11 +113,14 @@ REG_MAX_FEED_POWER = "3039"  # Max feed power in W    (confirmed: currently 2400
 SLOT_DISABLED = "0,00:00,00:00,0,0,0,0,0,0,100,10"
 
 # Work modes (human-readable names for the Select entity)
+# Note: there is deliberately no "Disabled" mode. Disabling EMS (3000=0)
+# does not reliably stop the battery, it hands control back to the device's
+# own logic. To stop the battery, set Battery Direction to Idle (or Power to
+# 0), which holds an active 0 W setpoint with EMS kept on.
 MODE_SELF_CONSUMPTION = "Self-Consumption (AI)"
 MODE_CUSTOM = "Custom / Manual"
-MODE_DISABLED = "Disabled"
 
-WORK_MODES = [MODE_SELF_CONSUMPTION, MODE_CUSTOM, MODE_DISABLED]
+WORK_MODES = [MODE_SELF_CONSUMPTION, MODE_CUSTOM]
 
 # Register sets for each mode
 MODE_REGISTERS = {
@@ -135,8 +144,5 @@ MODE_REGISTERS = {
         REG_AI_SMART_CHARGE: "0",
         REG_AI_SMART_DISC: "0",
         REG_CUSTOM_MODE: "1",
-    },
-    MODE_DISABLED: {
-        REG_EMS_ENABLE: "0",
     },
 }

@@ -12,6 +12,8 @@ from custom_components.aecc_battery.const import (
     DOMAIN,
     MAX_BATTERY_POWER_W,
     MAX_REGISTER_POWER_DEFAULT,
+    MODE_CUSTOM,
+    MODE_SELF_CONSUMPTION,
     REG_AI_SMART_CHARGE,
     REG_AI_SMART_DISC,
     REG_CONTROL_TIME1,
@@ -20,6 +22,7 @@ from custom_components.aecc_battery.const import (
     REG_MAX_FEED_POWER,
     REG_SCHEDULE_MODE,
     SLOT_DISABLED,
+    WORK_MODES,
 )
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
 
@@ -243,15 +246,33 @@ async def test_set_work_mode_self_consumption(
     assert payload[REG_CONTROL_TIME1] == SLOT_DISABLED
 
 
-async def test_set_work_mode_disabled(
+async def test_set_work_mode_disabled_removed(
     coordinator: AeccBatteryCoordinator,
 ) -> None:
-    """Test Disabled mode turns off EMS."""
+    """Disabled is no longer a valid work mode and is rejected."""
+    assert "Disabled" not in WORK_MODES
     result = await coordinator.async_set_work_mode("Disabled")
-    assert result is True
+    assert result is False
 
-    payload = coordinator.client.set_control_parameters.call_args[0][0]
-    assert payload[REG_EMS_ENABLE] == "0"
+
+async def test_set_work_mode_updates_current_work_mode(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """Selecting a work mode updates the shared source of truth."""
+    result = await coordinator.async_set_work_mode(MODE_SELF_CONSUMPTION)
+    assert result is True
+    assert coordinator.current_work_mode == MODE_SELF_CONSUMPTION
+
+
+async def test_battery_control_flips_work_mode_to_custom(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """Using direction/power switches the shared work mode to Custom."""
+    coordinator.current_work_mode = MODE_SELF_CONSUMPTION
+    result = await coordinator.async_set_battery_control("Charge", 500)
+    assert result is True
+    assert coordinator.current_work_mode == MODE_CUSTOM
+    assert coordinator.commanded_direction == "Charge"
 
 
 async def test_set_work_mode_unknown(
@@ -367,13 +388,14 @@ async def test_read_initial_state_self_consumption(
     assert coordinator.initial_work_mode == "Self-Consumption (AI)"
 
 
-async def test_read_initial_state_disabled(
+async def test_read_initial_state_ems_off_maps_to_custom(
     coordinator: AeccBatteryCoordinator,
 ) -> None:
-    """Test disabled mode is detected when EMS is off."""
+    """With Disabled removed, an EMS-off device reads back as Custom."""
     coordinator.client.get_control_parameters.return_value = {"ControlInfo": {"3000": "0"}}
     await coordinator.async_read_initial_state()
-    assert coordinator.initial_work_mode == "Disabled"
+    assert coordinator.initial_work_mode == MODE_CUSTOM
+    assert coordinator.current_work_mode == MODE_CUSTOM
 
 
 async def test_read_initial_power_from_slot(

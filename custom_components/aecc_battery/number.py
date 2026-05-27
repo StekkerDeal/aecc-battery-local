@@ -48,7 +48,6 @@ class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_power_setpoint"
         self._attr_native_max_value = coordinator.max_register_power
-        self._commanded: float = coordinator.initial_power if coordinator.initial_power is not None else 0
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -56,7 +55,7 @@ class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
 
     @property
     def native_value(self) -> float:
-        return self._commanded
+        return self.coordinator.commanded_power
 
     @property
     def available(self) -> bool:
@@ -64,17 +63,15 @@ class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         power_w = int(value)
-        self._commanded = power_w
         self.coordinator.commanded_power = power_w
 
         direction = self.coordinator.commanded_direction
         if direction == "Idle" and power_w > 0:
             direction = "Charge"
 
-        success = await self.coordinator.async_set_battery_control(direction, power_w)
-        if success:
-            self.async_write_ha_state()
-        else:
+        # The coordinator records direction + Custom mode and calls
+        # async_update_listeners() on success, refreshing every entity.
+        if not await self.coordinator.async_set_battery_control(direction, power_w):
             _LOGGER.warning("Failed to set power to %s W", power_w)
 
 

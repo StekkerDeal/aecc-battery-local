@@ -21,7 +21,6 @@ from .const import (
     MAX_REGISTER_POWER_DEFAULT,
     MIN_POLL_INTERVAL,
     MODE_CUSTOM,
-    MODE_DISABLED,
     MODE_REGISTERS,
     MODE_SELF_CONSUMPTION,
     POLL_INTERVAL,
@@ -123,6 +122,12 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.initial_max_soc: int | None = None
         self.initial_work_mode: str | None = None
         self.initial_power: int | None = None
+        # Single source of truth for the displayed work mode. All three
+        # control entities (Work Mode select, Battery Direction, Power
+        # slider) read from the coordinator so they never contradict each
+        # other. Updated on every successful control write, after which
+        # async_update_listeners() refreshes every entity at once.
+        self._current_work_mode: str | None = None
         # Per-brand cleaning profile (thresholds for the physics-aware
         # cleaners). Defaults to the conservative "Other" profile so a
         # missing/typo'd brand still gets light protection without rejecting
@@ -195,6 +200,14 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @commanded_direction.setter
     def commanded_direction(self, value: str) -> None:
         self._commanded_direction = value
+
+    @property
+    def current_work_mode(self) -> str | None:
+        return self._current_work_mode
+
+    @current_work_mode.setter
+    def current_work_mode(self, value: str | None) -> None:
+        self._current_work_mode = value
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -516,7 +529,15 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             slot1,
         )
 
-        return await self._logged_write(payload, f"battery_control({direction}, {power_w}W)")
+        success = await self._logged_write(payload, f"battery_control({direction}, {power_w}W)")
+        if success:
+            # Any manual direction/power command puts the device in Custom
+            # mode. Record it and refresh every control entity so the Work
+            # Mode selector reflects Custom instead of its stale value.
+            self._commanded_direction = direction
+            self._current_work_mode = MODE_CUSTOM
+            self.async_update_listeners()
+        return success
 
     async def async_set_power_setpoint(self, watts: float) -> bool:
         power_w = int(watts)
@@ -533,7 +554,11 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("SET work_mode: unknown mode %r", mode)
             return False
         _LOGGER.info("SET work_mode %r -> registers=%s", mode, registers)
-        return await self._logged_write(dict(registers), f"work_mode({mode})")
+        success = await self._logged_write(dict(registers), f"work_mode({mode})")
+        if success:
+            self._current_work_mode = mode
+            self.async_update_listeners()
+        return success
 
     async def async_set_min_soc(self, value: int) -> bool:
         self._commanded_min_soc = value
@@ -582,10 +607,8 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         min_soc = _int(REG_MIN_SOC)
         max_soc = _int(REG_MAX_SOC)
-        ems_on = _int(REG_EMS_ENABLE)
         ai_charge = _int(REG_AI_SMART_CHARGE)
         ai_discharge = _int(REG_AI_SMART_DISC)
-        custom_mode = _int(REG_CUSTOM_MODE)
 
         if min_soc is not None:
             self.initial_min_soc = min_soc
@@ -619,14 +642,13 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except (ValueError, IndexError):
                 _LOGGER.debug("Failed to parse control time slot: %r", slot_str)
 
-        if ems_on == 0:
-            self.initial_work_mode = MODE_DISABLED
-        elif custom_mode == 1:
-            self.initial_work_mode = MODE_CUSTOM
-        elif ai_charge == 1 or ai_discharge == 1:
+        # There is no "Disabled" mode. A device reporting EMS off (ems_on==0)
+        # is shown as Custom; selecting a mode or direction re-enables it.
+        if ai_charge == 1 or ai_discharge == 1:
             self.initial_work_mode = MODE_SELF_CONSUMPTION
         else:
             self.initial_work_mode = MODE_CUSTOM
+        self._current_work_mode = self.initial_work_mode
 
         if self.initial_work_mode:
             _LOGGER.info("Read initial work mode: %s", self.initial_work_mode)

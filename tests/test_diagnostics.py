@@ -48,9 +48,7 @@ def stored_entry(hass: HomeAssistant, mock_config_entry, coordinator):
 # ── Happy path ──────────────────────────────────────────────────────────────
 
 
-async def test_diagnostics_returns_all_top_level_sections(
-    hass: HomeAssistant, stored_entry
-) -> None:
+async def test_diagnostics_returns_all_top_level_sections(hass: HomeAssistant, stored_entry) -> None:
     """The dump must include every section the support workflow expects."""
     diag = await async_get_config_entry_diagnostics(hass, stored_entry)
 
@@ -68,9 +66,7 @@ async def test_diagnostics_returns_all_top_level_sections(
     assert diag["integration"]["version"]  # version resolved from manifest
 
 
-async def test_diagnostics_register_dump_populated(
-    hass: HomeAssistant, stored_entry
-) -> None:
+async def test_diagnostics_register_dump_populated(hass: HomeAssistant, stored_entry) -> None:
     """Register dump should pull from the device and surface key labels."""
     diag = await async_get_config_entry_diagnostics(hass, stored_entry)
 
@@ -87,9 +83,7 @@ async def test_diagnostics_register_dump_populated(
 # ── Redaction ───────────────────────────────────────────────────────────────
 
 
-async def test_diagnostics_redacts_pii(
-    hass: HomeAssistant, stored_entry
-) -> None:
+async def test_diagnostics_redacts_pii(hass: HomeAssistant, stored_entry) -> None:
     """Serial numbers and host must not leak; model/firmware survive."""
     diag = await async_get_config_entry_diagnostics(hass, stored_entry)
 
@@ -120,18 +114,13 @@ async def test_diagnostics_includes_write_history(
     assert entry["response_received"] is True
     assert "3000" in entry["payload"]  # EMS_ENABLE in the Custom register set
     assert entry["verify_result"] is not None
-    assert all(
-        {"register", "expected", "actual", "match"} <= set(r)
-        for r in entry["verify_result"]
-    )
+    assert all({"register", "expected", "actual", "match"} <= set(r) for r in entry["verify_result"])
 
 
 # ── Failure handling ────────────────────────────────────────────────────────
 
 
-async def test_diagnostics_survives_register_read_failure(
-    hass: HomeAssistant, stored_entry, mock_tcp_client
-) -> None:
+async def test_diagnostics_survives_register_read_failure(hass: HomeAssistant, stored_entry, mock_tcp_client) -> None:
     """A device timeout on the wide read must not crash the export."""
     mock_tcp_client.get_control_parameters = AsyncMock(return_value=None)
 
@@ -147,9 +136,7 @@ async def test_diagnostics_survives_register_read_failure(
 # ── Defence-in-depth leak detection ─────────────────────────────────────────
 
 
-async def test_diagnostics_no_sensitive_strings_leak(
-    hass: HomeAssistant, mock_config_entry, mock_tcp_client
-) -> None:
+async def test_diagnostics_no_sensitive_strings_leak(hass: HomeAssistant, mock_config_entry, mock_tcp_client) -> None:
     """Plant unique sentinels in every leak-prone slot, serialise the dump,
     and assert no sentinel appears in the JSON output.
 
@@ -204,6 +191,4 @@ async def test_diagnostics_no_sensitive_strings_leak(
         wifi_password_sentinel,
         user_email_sentinel,
     ):
-        assert sentinel not in blob, (
-            f"Sensitive value {sentinel!r} leaked into diagnostics output: {blob}"
-        )
+        assert sentinel not in blob, f"Sensitive value {sentinel!r} leaked into diagnostics output: {blob}"

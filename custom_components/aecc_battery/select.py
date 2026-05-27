@@ -32,7 +32,11 @@ async def async_setup_entry(
 
 
 class AeccWorkModeSelect(CoordinatorEntity[AeccBatteryCoordinator], SelectEntity):
-    """Dropdown to switch the battery between Self-Consumption, Custom, and Disabled."""
+    """Dropdown to switch the battery between Self-Consumption and Custom.
+
+    Reads its displayed value from the coordinator so it reflects Custom when
+    the Battery Direction or Power slider is used, instead of going stale.
+    """
 
     _attr_icon = "mdi:battery-sync"
     _attr_has_entity_name = True
@@ -47,7 +51,6 @@ class AeccWorkModeSelect(CoordinatorEntity[AeccBatteryCoordinator], SelectEntity
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_work_mode"
-        self._current_mode: str | None = coordinator.initial_work_mode
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -55,7 +58,7 @@ class AeccWorkModeSelect(CoordinatorEntity[AeccBatteryCoordinator], SelectEntity
 
     @property
     def current_option(self) -> str | None:
-        return self._current_mode
+        return self.coordinator.current_work_mode
 
     @property
     def available(self) -> bool:
@@ -63,11 +66,9 @@ class AeccWorkModeSelect(CoordinatorEntity[AeccBatteryCoordinator], SelectEntity
 
     async def async_select_option(self, option: str) -> None:
         _LOGGER.info("User selected work mode: %s", option)
-        success = await self.coordinator.async_set_work_mode(option)
-        if success:
-            self._current_mode = option
-            self.async_write_ha_state()
-        else:
+        # The coordinator records the mode and calls async_update_listeners()
+        # on success, which refreshes this entity (and the others).
+        if not await self.coordinator.async_set_work_mode(option):
             _LOGGER.error("Failed to set work mode to '%s'", option)
 
 
@@ -86,18 +87,6 @@ class AeccBatteryDirection(CoordinatorEntity[AeccBatteryCoordinator], SelectEnti
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_battery_direction"
-        charge = coordinator.get_value("battery_charging_power") or 0
-        discharge = coordinator.get_value("battery_discharging_power") or 0
-        try:
-            if float(charge) > 0:
-                self._current_direction = "Charge"
-            elif float(discharge) > 0:
-                self._current_direction = "Discharge"
-            else:
-                self._current_direction = "Idle"
-        except (TypeError, ValueError):
-            self._current_direction = "Idle"
-        coordinator.commanded_direction = self._current_direction
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -105,7 +94,7 @@ class AeccBatteryDirection(CoordinatorEntity[AeccBatteryCoordinator], SelectEnti
 
     @property
     def current_option(self) -> str:
-        return self._current_direction
+        return self.coordinator.commanded_direction
 
     @property
     def available(self) -> bool:
@@ -116,10 +105,7 @@ class AeccBatteryDirection(CoordinatorEntity[AeccBatteryCoordinator], SelectEnti
         power = self.coordinator.commanded_power or 0
         if option == "Idle":
             power = 0
-        success = await self.coordinator.async_set_battery_control(option, power)
-        if success:
-            self._current_direction = option
-            self.coordinator.commanded_direction = option
-            self.async_write_ha_state()
-        else:
+        # The coordinator records the direction + Custom mode and calls
+        # async_update_listeners() on success, refreshing every entity.
+        if not await self.coordinator.async_set_battery_control(option, power):
             _LOGGER.error("Failed to set battery direction to '%s'", option)
