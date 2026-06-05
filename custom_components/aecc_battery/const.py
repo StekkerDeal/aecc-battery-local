@@ -141,6 +141,13 @@ MODE_REGISTERS = {
     },
     MODE_CUSTOM: {
         REG_EMS_ENABLE: "1",
+        # Switch the schedule to custom (6). Without this, selecting Custom /
+        # Manual coming from Self-Consumption left the schedule on self-gen
+        # (3020=3) so the device ignored the manual setpoint and did nothing
+        # until a Direction/Power command (which writes 3020=6) was sent. That
+        # is why users had to go via Idle first to make Manual respond. Mirror
+        # of the 3020=3 reset added to Self-Consumption for #2/#3.
+        REG_SCHEDULE_MODE: "6",
         REG_AI_SMART_CHARGE: "0",
         REG_AI_SMART_DISC: "0",
         REG_CUSTOM_MODE: "1",

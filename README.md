@@ -170,7 +170,6 @@ Every control command (direction, power, work mode, SOC limits) is automatically
 | Discharge Limit | Number (slider) | Min SOC before discharge stops (5-50%) |
 | Charge Limit | Number (slider) | Max SOC before charging stops (50-100%) |
 | Work Mode | Select | Self-Consumption (AI), Custom/Manual |
-| EMS Enabled | Switch | Master on/off for energy management |
 
 ---
 
