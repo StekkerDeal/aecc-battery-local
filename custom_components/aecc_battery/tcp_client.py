@@ -7,6 +7,11 @@ import json
 import logging
 from typing import Any
 
+from .const import (
+    READ_TIMEOUT_SUSPECT_THRESHOLD,
+    RECONNECT_BASE_COOLDOWN,
+    RECONNECT_MAX_COOLDOWN,
+)
 from .tcp_manager import TCPClientManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -14,18 +19,33 @@ _LOGGER = logging.getLogger(__name__)
 _GET_TIMEOUT = 10
 
 
+class _ReadTimeout(Exception):
+    """Raised by _read_json when the device accepts the request but never replies."""
+
+
 class AeccTcpClient:
-    def __init__(self, host: str, port: int, timeout: float = 5.0) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        timeout: float = 5.0,
+        base_cooldown: float = RECONNECT_BASE_COOLDOWN,
+        max_cooldown: float = RECONNECT_MAX_COOLDOWN,
+    ) -> None:
         self.host = host
         self.port = port
-        self._manager = TCPClientManager.get_instance(host, port, timeout)
+        self._manager = TCPClientManager.get_instance(host, port, timeout, base_cooldown, max_cooldown)
         self._serial = 0
         self._connected = False
         self._io_lock = asyncio.Lock()
+        # Consecutive GET read timeouts (device connected but silent). After
+        # READ_TIMEOUT_SUSPECT_THRESHOLD we recycle the possibly half-open socket.
+        self._read_timeout_streak = 0
 
     async def async_connect(self) -> None:
         await self._manager._connect()
         self._connected = True
+        self._manager.note_success()
 
     async def async_disconnect(self) -> None:
         await self._manager.close()
@@ -115,14 +135,14 @@ class AeccTcpClient:
                 writer.write((json.dumps(payload) + "\n").encode("utf-8"))
                 await writer.drain()
                 result = await self._read_json(reader)
-                if result is None:
-                    _LOGGER.warning("GET %s returned no data", command)
+                self._manager.note_success()
+                self._read_timeout_streak = 0
                 return result
+            except _ReadTimeout:
+                await self._handle_read_timeout("GET", command)
+                return None
             except (ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
-                _LOGGER.warning("GET %s connection error: %s - reconnecting after 2s cooldown", command, exc)
-                self._connected = False
-                await asyncio.sleep(2)
-                await self._manager.reconnect()
+                await self._handle_connection_error("GET", command, exc)
                 return None
             except (json.JSONDecodeError, UnicodeDecodeError, ValueError, KeyError) as exc:
                 _LOGGER.error("GET %s error: %s", command, exc, exc_info=True)
@@ -145,18 +165,64 @@ class AeccTcpClient:
                 await writer.drain()
                 response = await self._read_json(reader)
                 _LOGGER.debug("RX SET <- %s", response)
+                self._manager.note_success()
+                self._read_timeout_streak = 0
                 return response
+            except _ReadTimeout:
+                await self._handle_read_timeout("SET", command)
+                return None
             except (ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
-                _LOGGER.warning("SET %s connection error: %s - reconnecting after 2s cooldown", command, exc)
-                self._connected = False
-                await asyncio.sleep(2)
-                await self._manager.reconnect()
+                await self._handle_connection_error("SET", command, exc)
                 return None
             except (json.JSONDecodeError, UnicodeDecodeError, ValueError, KeyError) as exc:
                 _LOGGER.error("SET %s error: %s", command, exc, exc_info=True)
                 return None
 
-    async def _read_json(self, reader: asyncio.StreamReader) -> dict[str, Any] | None:
+    # ── Failure handling ─────────────────────────────────────────────────────
+
+    async def _handle_connection_error(self, op: str, command: str, exc: Exception) -> None:
+        """Log, back off, and reconnect after a connection-level error.
+
+        The cooldown is read before recording the failure, so the first error
+        of an outage waits ``base_cooldown`` (matching the previous flat delay)
+        and only sustained failures escalate. A failing reconnect is swallowed
+        here so it can never propagate out of the calling _get/_set.
+        """
+        self._connected = False
+        cooldown = self._manager.current_cooldown()
+        _LOGGER.warning(
+            "%s %s connection error: %s - reconnecting after %.0fs cooldown",
+            op,
+            command,
+            exc,
+            cooldown,
+        )
+        self._manager.note_failure()
+        await asyncio.sleep(cooldown)
+        try:
+            await self._manager.reconnect()
+        except (TimeoutError, OSError) as reconnect_exc:
+            _LOGGER.debug("%s %s reconnect failed: %s", op, command, reconnect_exc)
+
+    async def _handle_read_timeout(self, op: str, command: str) -> None:
+        """Recycle a likely half-open socket after repeated silent reads.
+
+        A single slow response is tolerated; only after
+        ``READ_TIMEOUT_SUSPECT_THRESHOLD`` consecutive timeouts do we close the
+        socket so the next request reconnects lazily.
+        """
+        self._read_timeout_streak += 1
+        if self._read_timeout_streak >= READ_TIMEOUT_SUSPECT_THRESHOLD:
+            _LOGGER.warning(
+                "%s %s: %d consecutive read timeouts - recycling socket",
+                op,
+                command,
+                self._read_timeout_streak,
+            )
+            await self._manager.close()
+            self._read_timeout_streak = 0
+
+    async def _read_json(self, reader: asyncio.StreamReader) -> dict[str, Any]:
         buffer = b""
         try:
             async with asyncio.timeout(_GET_TIMEOUT):
@@ -177,4 +243,4 @@ class AeccTcpClient:
                 len(buffer),
                 buffer.decode("utf-8", errors="replace") if buffer else "(empty)",
             )
-            return None
+            raise _ReadTimeout from None

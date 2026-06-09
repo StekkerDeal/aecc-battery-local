@@ -17,6 +17,15 @@ DEFAULT_NAME = "AECC Battery"
 DEFAULT_TIMEOUT = 5  # seconds
 POLL_INTERVAL = 5  # seconds – change this to update faster/slower
 MIN_POLL_INTERVAL = 2  # seconds – hard floor to avoid flooding the device
+
+# TCP reconnect backoff. On a connection error the client waits, then reconnects.
+# The cooldown escalates per consecutive failure (base, base*2, base*4, …) capped
+# at max, so a device that drops its single-session TCP server is not hammered
+# every 2s for the whole outage. The first retry uses base, matching the previous
+# flat behaviour, so a single transient blip is not slowed down.
+RECONNECT_BASE_COOLDOWN = 2  # seconds – first retry delay
+RECONNECT_MAX_COOLDOWN = 60  # seconds – cap on the escalating cooldown
+READ_TIMEOUT_SUSPECT_THRESHOLD = 3  # consecutive GET read timeouts before recycling the socket
 MAX_BATTERY_POWER_W = 2400  # watts – hardware rated max
 MAX_REGISTER_POWER_DEFAULT = 800  # watts – default local TCP limit without extended power
 

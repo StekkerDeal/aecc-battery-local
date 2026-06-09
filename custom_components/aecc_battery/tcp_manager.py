@@ -17,21 +17,42 @@ class TCPClientManager:
 
     _connections: dict[tuple[str, int], TCPClientManager] = {}
 
-    def __init__(self, host: str, port: int, timeout: float = 5.0) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        timeout: float = 5.0,
+        base_cooldown: float = 2.0,
+        max_cooldown: float = 60.0,
+    ) -> None:
         self.host = host
         self.port = port
         self.timeout = timeout
         self.reader: asyncio.StreamReader | None = None
         self.writer: asyncio.StreamWriter | None = None
         self._lock = asyncio.Lock()
+        # Reconnect backoff state. The cooldown escalates with the number of
+        # consecutive connection failures and is reset on the next success.
+        self._base_cooldown = base_cooldown
+        self._max_cooldown = max_cooldown
+        self._consecutive_failures = 0
 
     # ── Factory ──────────────────────────────────────────────────────────────
 
     @classmethod
-    def get_instance(cls, host: str, port: int, timeout: float = 5.0) -> TCPClientManager:
+    def get_instance(
+        cls,
+        host: str,
+        port: int,
+        timeout: float = 5.0,
+        base_cooldown: float = 2.0,
+        max_cooldown: float = 60.0,
+    ) -> TCPClientManager:
         key = (host, port)
         if key not in cls._connections:
-            cls._connections[key] = TCPClientManager(host, port, timeout)
+            # Cooldown args only apply when first creating the instance; an
+            # already-registered live connection keeps its own backoff state.
+            cls._connections[key] = TCPClientManager(host, port, timeout, base_cooldown, max_cooldown)
         return cls._connections[key]
 
     @classmethod
@@ -76,5 +97,25 @@ class TCPClientManager:
 
     async def reconnect(self) -> None:
         _LOGGER.info("Reconnecting to %s:%s", self.host, self.port)
-        await self.close()
-        await self._connect()
+        # Serialize with get_reader_writer() so a reconnect cannot race a
+        # concurrent connect. We call the private close()/_connect() directly,
+        # never get_reader_writer(), which would re-acquire this lock.
+        async with self._lock:
+            await self.close()
+            await self._connect()
+
+    # ── Backoff ───────────────────────────────────────────────────────────────
+
+    def _cooldown_for(self, attempt: int) -> float:
+        """Return the reconnect cooldown for a 0-based failure attempt."""
+        return min(self._base_cooldown * (2**attempt), self._max_cooldown)
+
+    def current_cooldown(self) -> float:
+        """Cooldown to wait before the next reconnect, given failures so far."""
+        return self._cooldown_for(self._consecutive_failures)
+
+    def note_failure(self) -> None:
+        self._consecutive_failures += 1
+
+    def note_success(self) -> None:
+        self._consecutive_failures = 0
