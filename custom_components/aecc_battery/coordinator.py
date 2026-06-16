@@ -544,9 +544,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if direction == "Idle" or power_w == 0:
             slot1 = f"0,00:00,00:00,0,0,0,0,0,0,{charge_soc},{discharge_soc}"
         else:
-            slot1 = self._encode_active_slot(
-                direction, power_w, field7, charge_soc, discharge_soc
-            )
+            slot1 = self._encode_active_slot(direction, power_w, field7, charge_soc, discharge_soc)
 
         payload = {
             REG_EMS_ENABLE: "1",
