@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .cleaners import CLEANERS, CleanerContext
 from .const import (
+    BRAND_AEG,
     DEFAULT_BRAND_PROFILE,
     DOMAIN,
     MAX_BATTERY_POWER_W,
@@ -489,6 +490,50 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Recent control writes with verify outcomes (newest last)."""
         return list(self._write_history)
 
+    def _encode_active_slot(
+        self,
+        direction: str,
+        power_w: int,
+        field7: int,
+        charge_soc: int,
+        discharge_soc: int,
+    ) -> str:
+        """Build the active (timeSwitch=1) control slot string for register 3003.
+
+        Most brands encode the setpoint as a single signed power field (negative =
+        charge, positive = discharge), confirmed on AFERIY. AEG (Solarcube) ignores
+        that and expects two unsigned fields instead - charge in field 3, discharge in
+        field 4 - so it gets its own layout. Idle/disabled slots are all-zero and
+        layout-neutral, so they do not go through here. See REG_CONTROL_TIME1 in const.
+        """
+        if self._manufacturer == BRAND_AEG:
+            charge_p = power_w if direction == "Charge" else 0
+            discharge_p = power_w if direction == "Discharge" else 0
+            return f"1,00:00,23:59,{charge_p},{discharge_p},6,{field7},0,0,{charge_soc},{discharge_soc}"
+        reg_power = -power_w if direction == "Charge" else power_w
+        return f"1,00:00,23:59,{reg_power},0,6,{field7},0,0,{charge_soc},{discharge_soc}"
+
+    def _decode_active_slot(self, parts: list[str]) -> tuple[int, str]:
+        """Recover (power_w, direction) from an active slot's CSV fields.
+
+        Inverse of ``_encode_active_slot``: AEG reads field 3 as charge and field 4 as
+        discharge (both unsigned); other brands read field 3 as a signed setpoint.
+        """
+        if self._manufacturer == BRAND_AEG:
+            charge_p = int(parts[3])
+            discharge_p = int(parts[4])
+            if charge_p > 0:
+                return charge_p, "Charge"
+            if discharge_p > 0:
+                return discharge_p, "Discharge"
+            return 0, "Idle"
+        reg_power = int(parts[3])
+        if reg_power > 0:
+            return reg_power, "Discharge"
+        if reg_power < 0:
+            return -reg_power, "Charge"
+        return 0, "Idle"
+
     async def async_set_battery_control(self, direction: str, power_w: int) -> bool:
         has_storage = bool(self.data and self.data.get("Storage_list"))
         field7 = 5 if has_storage else 4
@@ -499,8 +544,9 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if direction == "Idle" or power_w == 0:
             slot1 = f"0,00:00,00:00,0,0,0,0,0,0,{charge_soc},{discharge_soc}"
         else:
-            reg_power = -power_w if direction == "Charge" else power_w
-            slot1 = f"1,00:00,23:59,{reg_power},0,6,{field7},0,0,{charge_soc},{discharge_soc}"
+            slot1 = self._encode_active_slot(
+                direction, power_w, field7, charge_soc, discharge_soc
+            )
 
         payload = {
             REG_EMS_ENABLE: "1",
@@ -623,21 +669,16 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if slot_str and isinstance(slot_str, str):
             try:
                 parts = slot_str.split(",")
-                if len(parts) >= 4 and parts[0] == "1":
-                    reg_power = int(parts[3])
-                    self.initial_power = abs(reg_power)
-                    self._commanded_power = self.initial_power
-                    if reg_power > 0:
-                        self._commanded_direction = "Discharge"
-                    elif reg_power < 0:
-                        self._commanded_direction = "Charge"
-                    else:
-                        self._commanded_direction = "Idle"
+                if len(parts) >= 5 and parts[0] == "1":
+                    power, direction = self._decode_active_slot(parts)
+                    self.initial_power = power
+                    self._commanded_power = power
+                    self._commanded_direction = direction
                     _LOGGER.info(
-                        "Read initial power: %d W (register value: %d, direction: %s)",
+                        "Read initial power: %d W (direction: %s, slot: %r)",
                         self.initial_power,
-                        reg_power,
                         self._commanded_direction,
+                        slot_str,
                     )
             except (ValueError, IndexError):
                 _LOGGER.debug("Failed to parse control time slot: %r", slot_str)

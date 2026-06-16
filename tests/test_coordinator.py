@@ -54,6 +54,20 @@ def coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
     return coord
 
 
+@pytest.fixture
+def aeg_coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
+    """Coordinator configured as AEG, which uses the two-field slot layout."""
+    coord = AeccBatteryCoordinator(
+        hass,
+        mock_client,
+        device_name="Test AEG",
+        manufacturer="AEG",
+        model="Solarcube AS-BBL09",
+    )
+    coord._WRITE_VERIFY_DELAY_SECONDS = 0
+    return coord
+
+
 # ── DeviceInfo ──────────────────────────────────────────────────────────────
 
 
@@ -201,6 +215,68 @@ async def test_set_battery_control_idle(
 
     slot = coordinator.client.set_control_parameters.call_args[0][0][REG_CONTROL_TIME1]
     assert slot.startswith("0,")
+
+
+async def test_aeg_charge_uses_two_field_layout(
+    aeg_coordinator: AeccBatteryCoordinator,
+) -> None:
+    """AEG charge puts power in field 3 (unsigned), field 4 = 0, no signed value."""
+    aeg_coordinator.data = {"SSumInfoList": {}}  # field7 = 4
+    result = await aeg_coordinator.async_set_battery_control("Charge", 500)
+    assert result is True
+
+    slot = aeg_coordinator.client.set_control_parameters.call_args[0][0][REG_CONTROL_TIME1]
+    assert slot == "1,00:00,23:59,500,0,6,4,0,0,100,10"
+    assert "-500" not in slot
+
+
+async def test_aeg_discharge_uses_two_field_layout(
+    aeg_coordinator: AeccBatteryCoordinator,
+) -> None:
+    """AEG discharge puts power in field 4, field 3 = 0."""
+    aeg_coordinator.data = {"Storage_list": [{}]}  # field7 = 5
+    result = await aeg_coordinator.async_set_battery_control("Discharge", 800)
+    assert result is True
+
+    slot = aeg_coordinator.client.set_control_parameters.call_args[0][0][REG_CONTROL_TIME1]
+    assert slot == "1,00:00,23:59,0,800,6,5,0,0,100,10"
+
+
+async def test_aeg_idle_slot_unchanged(
+    aeg_coordinator: AeccBatteryCoordinator,
+) -> None:
+    """AEG idle uses the same all-zero, layout-neutral slot as other brands."""
+    aeg_coordinator.data = {"SSumInfoList": {}}
+    result = await aeg_coordinator.async_set_battery_control("Idle", 0)
+    assert result is True
+
+    slot = aeg_coordinator.client.set_control_parameters.call_args[0][0][REG_CONTROL_TIME1]
+    assert slot == "0,00:00,00:00,0,0,0,0,0,0,100,10"
+
+
+async def test_non_aeg_still_signed(coordinator: AeccBatteryCoordinator) -> None:
+    """Regression guard: non-AEG brands keep the single signed-field encoding."""
+    coordinator.data = {"SSumInfoList": {}}
+    await coordinator.async_set_battery_control("Charge", 500)
+    slot = coordinator.client.set_control_parameters.call_args[0][0][REG_CONTROL_TIME1]
+    assert slot == "1,00:00,23:59,-500,0,6,4,0,0,100,10"
+
+
+async def test_aeg_slot_round_trips_through_reader(
+    aeg_coordinator: AeccBatteryCoordinator,
+) -> None:
+    """An AEG charge slot is read back as Charge, not misread as Discharge."""
+    aeg_coordinator.client.get_control_parameters.return_value = {
+        "ControlInfo": {
+            "3003": "1,00:00,23:59,500,0,6,5,0,0,100,11",
+            "3000": "1",
+            "3030": "1",
+        }
+    }
+    await aeg_coordinator.async_read_initial_state()
+    assert aeg_coordinator.initial_power == 500
+    assert aeg_coordinator.commanded_power == 500
+    assert aeg_coordinator.commanded_direction == "Charge"
 
 
 async def test_set_battery_control_extended_writes_max_feed(hass: HomeAssistant, mock_client) -> None:

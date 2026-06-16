@@ -40,6 +40,10 @@ KNOWN_BRANDS = [
     "Other",
 ]
 
+# Brand whose firmware needs a different control-slot encoding (see REG_CONTROL_TIME1
+# comment below and async_set_battery_control). Gate AEG-specific behaviour on this.
+BRAND_AEG = "AEG"
+
 # ─── Sensor cleaning profile ─────────────────────────────────────────────────
 # Per-brand thresholds for the physics-aware SOC cleaner.
 # - soc_zero_reject_during_active_w: reject SOC=0 readings when the absolute
@@ -111,6 +115,13 @@ REG_CUSTOM_MODE = "3030"  # 0 = off, 1 = on
 #   e.g. "1,00:00,23:59,2400,0,6,0,0,0,100,10"    (discharge at 2400 W)
 #        "1,00:00,23:59,-2400,0,6,0,0,0,100,10"   (charge at 2400 W)
 #        "0,00:00,00:00,0,0,0,0,0,0,100,10"       (idle / disabled)
+#
+# AEG (Solarcube) variant: the firmware ignores the signed-power field above and
+# instead expects two unsigned power fields - charge in field 3, discharge in field 4
+# (mirrors the device's own slots 3004-3018, e.g. "0,00:00,00:00,1000,500,..."):
+#        "1,00:00,23:59,500,0,6,5,0,0,100,11"    (AEG charge at 500 W)
+#        "1,00:00,23:59,0,800,6,5,0,0,100,11"    (AEG discharge at 800 W)
+# Gated on BRAND_AEG; see async_set_battery_control / async_read_initial_state.
 REG_CONTROL_TIME1 = "3003"  # First active time slot
 
 REG_MIN_SOC = "3023"  # Minimum discharge SOC  (confirmed: currently 10)
