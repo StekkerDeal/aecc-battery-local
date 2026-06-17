@@ -46,7 +46,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 |---|---|---|---|
 | **Sunpura** | S2400 | Fully tested | PV input and multi-battery setups confirmed working |
 | **Lunergy** | Hub 2400 AC | Fully tested | TCP connection can be flaky; the integration handles reconnects automatically. Per-brand sensor cleaning rejects the known sensor-stuck-at-zero pattern. |
-| **AEG** | Solarcube | Community confirmed | Works out of the box ([#1](https://github.com/StekkerDeal/aecc-battery-local/issues/1)) |
+| **AEG** | Solarcube | Partial | Monitoring works ([#1](https://github.com/StekkerDeal/aecc-battery-local/issues/1)). Battery **power** control has no effect on this firmware (it ignores the control register and uses dedicated power registers instead); needs a register scan from an AEG owner to fix ([#8](https://github.com/StekkerDeal/aecc-battery-local/issues/8)) |
 | **Voltdeer** | SR5000 | Community confirmed | Works out of the box |
 | **AFERIY** | PS240 | Community confirmed | Multi-unit setup confirmed working ([#2](https://github.com/StekkerDeal/aecc-battery-local/issues/2)) |
 | **AccuMate** | Plug-In Battery | Community confirmed | Works out of the box ([#6](https://github.com/StekkerDeal/aecc-battery-local/issues/6)) |
