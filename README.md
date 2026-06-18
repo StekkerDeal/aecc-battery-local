@@ -50,12 +50,12 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | **Voltdeer** | SR5000 | Community confirmed | Works out of the box |
 | **AFERIY** | PS240 | Community confirmed | Multi-unit setup confirmed working ([#2](https://github.com/StekkerDeal/aecc-battery-local/issues/2)) |
 | **AccuMate** | Plug-In Battery | Community confirmed | Works out of the box ([#6](https://github.com/StekkerDeal/aecc-battery-local/issues/6)) |
+| **JET** | GreenARK Pro | Tested | Confirmed working on a loan test unit |
 
 ### Expected Compatible (Untested)
 
 | Brand | Model | Notes |
 |---|---|---|
-| **JET** | GreenArk Pro | Same AECC platform, should work out of the box |
 | Other AECC brands |: | Any battery using the AECC / ai-ec.cloud platform may work |
 
 **Have a different AECC brand?** We'd love to hear from you. Install the integration, try it out, and [open an issue](https://github.com/StekkerDeal/aecc-battery-local/issues) to let us know if it works (or doesn't). Your feedback helps us expand the tested battery list.
