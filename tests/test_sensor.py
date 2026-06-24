@@ -17,7 +17,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.aecc_battery.const import BRAND_PROFILES
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
-from custom_components.aecc_battery.sensor import AeccSensor
+from custom_components.aecc_battery.sensor import AeccSensor, AeccWifiSignalSensor
 
 
 @pytest.fixture
@@ -133,3 +133,13 @@ def test_first_reading_treated_as_in_window(coordinator: AeccBatteryCoordinator,
     # No coordinator data yet, no cleaner state, entity falls back to
     # coordinator.last_update_success for availability. Native value is None.
     assert sensor.native_value is None
+
+
+def test_wifi_signal_sensor_reports_rssi(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    """The WiFi sensor surfaces the coordinator's RSSI and the throttled updates."""
+    coordinator.wifi_rssi = -35
+    sensor = AeccWifiSignalSensor(coordinator, config_entry)
+    assert sensor.native_value == -35
+    # A later throttled refresh propagates without re-creating the entity.
+    coordinator.wifi_rssi = -55
+    assert sensor.native_value == -55

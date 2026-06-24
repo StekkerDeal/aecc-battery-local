@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,6 +23,7 @@ from custom_components.aecc_battery.const import (
     REG_MAX_FEED_POWER,
     REG_SCHEDULE_MODE,
     SLOT_DISABLED,
+    WIFI_RSSI_REFRESH_INTERVAL,
     WORK_MODES,
 )
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
@@ -94,6 +96,131 @@ def test_device_info_empty_model(hass: HomeAssistant, mock_client) -> None:
     """Test DeviceInfo returns None for empty model string."""
     coord = AeccBatteryCoordinator(hass, mock_client, "Test", model="")
     assert coord.device_info["model"] is None
+
+
+def test_device_info_model_prefers_config(coordinator: AeccBatteryCoordinator) -> None:
+    """A user-entered config model wins over the reg-20 code (friendlier)."""
+    coordinator.device_model = "GTSW0000"
+    assert coordinator.device_info["model"] == "S2400"
+
+
+def test_device_info_model_falls_back_to_reg20(hass: HomeAssistant, mock_client) -> None:
+    """With no config model, the reg-20 code populates the model."""
+    coord = AeccBatteryCoordinator(hass, mock_client, "Test", model="")
+    coord.device_model = "GTSW0000"
+    assert coord.device_info["model"] == "GTSW0000"
+
+
+# ── DeviceManagement probe ────────────────────────────────────────────────────
+
+# JET returns identity + RSSI under the ControlInfo key.
+JET_DM_RESPONSE = {
+    "Response": "DeviceManagement",
+    "SerialNumber": 1,
+    "Target": "HA",
+    "ControlInfo": {
+        "8": "JM0225391ASG0290",
+        "20": "GTSW0000",
+        "21": "1.4.9.9.9.1.5",
+        "76": "-35",
+    },
+}
+
+# Sunpura-style devices use the DeviceManagementInfo key (regression guard).
+SUNPURA_DM_RESPONSE = {
+    "Response": "DeviceManagement",
+    "DeviceManagementInfo": {"8": "SP123456", "21": "v3.0.1"},
+}
+
+
+async def test_probe_parses_controlinfo_jet(coordinator: AeccBatteryCoordinator, mock_client) -> None:
+    """JET's ControlInfo-keyed response populates serial, firmware, model, RSSI."""
+    mock_client.get_device_management_info = AsyncMock(return_value=JET_DM_RESPONSE)
+    await coordinator.async_probe_device_management()
+    assert coordinator.device_serial == "JM0225391ASG0290"
+    assert coordinator.firmware_version == "1.4.9.9.9.1.5"
+    assert coordinator.device_model == "GTSW0000"
+    assert coordinator.wifi_rssi == -35
+
+
+async def test_probe_parses_devicemanagementinfo_regression(coordinator: AeccBatteryCoordinator, mock_client) -> None:
+    """The legacy DeviceManagementInfo key still parses (no Sunpura regression)."""
+    mock_client.get_device_management_info = AsyncMock(return_value=SUNPURA_DM_RESPONSE)
+    await coordinator.async_probe_device_management()
+    assert coordinator.device_serial == "SP123456"
+    assert coordinator.firmware_version == "v3.0.1"
+    assert coordinator.wifi_rssi is None  # reg 76 absent -> no sensor later
+
+
+async def test_probe_none_response_populates_nothing(coordinator: AeccBatteryCoordinator, mock_client) -> None:
+    """A device that does not answer DeviceManagement leaves all fields unset."""
+    mock_client.get_device_management_info = AsyncMock(return_value=None)
+    await coordinator.async_probe_device_management()
+    assert coordinator.device_serial is None
+    assert coordinator.wifi_rssi is None
+
+
+async def test_probe_rssi_non_numeric_ignored(coordinator: AeccBatteryCoordinator, mock_client) -> None:
+    """A non-numeric reg 76 does not crash and leaves wifi_rssi unset."""
+    mock_client.get_device_management_info = AsyncMock(return_value={"ControlInfo": {"8": "S", "76": "n/a"}})
+    await coordinator.async_probe_device_management()
+    assert coordinator.wifi_rssi is None
+
+
+# ── Throttled WiFi RSSI refresh ───────────────────────────────────────────────
+
+
+async def test_rssi_refresh_skipped_when_unsupported(coordinator: AeccBatteryCoordinator, mock_client) -> None:
+    """No DeviceManagement read when the device never reported RSSI at setup."""
+    coordinator.wifi_rssi = None
+    mock_client.get_device_management_info = AsyncMock(return_value=JET_DM_RESPONSE)
+    await coordinator._async_maybe_refresh_rssi()
+    mock_client.get_device_management_info.assert_not_called()
+
+
+async def test_rssi_refresh_runs_first_time(coordinator: AeccBatteryCoordinator, mock_client) -> None:
+    """First refresh after setup reads and updates RSSI."""
+    coordinator.wifi_rssi = -40
+    mock_client.get_device_management_info = AsyncMock(return_value={"ControlInfo": {"76": "-50"}})
+    await coordinator._async_maybe_refresh_rssi()
+    mock_client.get_device_management_info.assert_called_once()
+    assert coordinator.wifi_rssi == -50
+
+
+async def test_rssi_refresh_throttled_within_window(coordinator: AeccBatteryCoordinator, mock_client) -> None:
+    """A refresh inside the throttle window does not re-read DeviceManagement."""
+    coordinator.wifi_rssi = -40
+    coordinator._last_rssi_refresh = time.monotonic()
+    mock_client.get_device_management_info = AsyncMock(return_value={"ControlInfo": {"76": "-50"}})
+    await coordinator._async_maybe_refresh_rssi()
+    mock_client.get_device_management_info.assert_not_called()
+    assert coordinator.wifi_rssi == -40
+
+
+async def test_rssi_refresh_past_window(coordinator: AeccBatteryCoordinator, mock_client) -> None:
+    """Past the throttle window the value updates again."""
+    coordinator.wifi_rssi = -40
+    coordinator._last_rssi_refresh = time.monotonic() - WIFI_RSSI_REFRESH_INTERVAL - 1
+    mock_client.get_device_management_info = AsyncMock(return_value={"ControlInfo": {"76": "-55"}})
+    await coordinator._async_maybe_refresh_rssi()
+    mock_client.get_device_management_info.assert_called_once()
+    assert coordinator.wifi_rssi == -55
+
+
+async def test_rssi_refresh_none_keeps_last_value(coordinator: AeccBatteryCoordinator, mock_client) -> None:
+    """A None read (timeout) holds the last RSSI rather than clearing it."""
+    coordinator.wifi_rssi = -40
+    mock_client.get_device_management_info = AsyncMock(return_value=None)
+    await coordinator._async_maybe_refresh_rssi()
+    assert coordinator.wifi_rssi == -40
+
+
+async def test_rssi_refresh_exception_does_not_propagate(coordinator: AeccBatteryCoordinator, mock_client) -> None:
+    """A raising read is swallowed and the last RSSI is kept."""
+    coordinator.wifi_rssi = -40
+    mock_client.get_device_management_info = AsyncMock(side_effect=OSError("boom"))
+    await coordinator._async_maybe_refresh_rssi()
+    assert coordinator.wifi_rssi == -40
 
 
 # ── Field mapping / get_value ────────────────────────────────────────────────

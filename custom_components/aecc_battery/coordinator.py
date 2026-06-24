@@ -34,6 +34,7 @@ from .const import (
     REG_MAX_SOC,
     REG_MIN_SOC,
     REG_SCHEDULE_MODE,
+    WIFI_RSSI_REFRESH_INTERVAL,
 )
 from .tcp_client import AeccTcpClient
 
@@ -113,6 +114,11 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._failure_tolerance: int = 5
         self.device_serial: str | None = None
         self.firmware_version: str | None = None
+        self.device_model: str | None = None
+        self.wifi_rssi: int | None = None
+        # Monotonic timestamp of the last WiFi RSSI re-read. None until the first
+        # refresh; used to throttle the periodic DeviceManagement read.
+        self._last_rssi_refresh: float | None = None
         self._commanded_power: int = 0
         self._commanded_direction: str = "Idle"
         self._commanded_min_soc: int = 10
@@ -182,7 +188,30 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._consecutive_failures = 0
         self._last_good_data = raw
+        await self._async_maybe_refresh_rssi()
         return raw
+
+    async def _async_maybe_refresh_rssi(self) -> None:
+        """Re-read the WiFi RSSI on a throttle, after a good energy poll.
+
+        Only runs when the setup probe already populated ``wifi_rssi`` (i.e. the
+        device answers DeviceManagement and reports reg 76), so devices that do
+        not support it never pay the extra command or its 3s timeout. A failed
+        read leaves the last value in place and never propagates to the poll.
+        """
+        if self.wifi_rssi is None:
+            return
+        now = time.monotonic()
+        if self._last_rssi_refresh is not None and (now - self._last_rssi_refresh) < WIFI_RSSI_REFRESH_INTERVAL:
+            return
+        self._last_rssi_refresh = now
+        try:
+            info = await self.client.get_device_management_info()
+        except Exception as exc:  # noqa: BLE001 - never let RSSI refresh fail the poll
+            _LOGGER.debug("WiFi RSSI refresh failed: %s", exc)
+            return
+        if info is not None:
+            self._parse_device_management(info)
 
     # ── Public access to commanded state (used by entity platforms) ──────────
 
@@ -217,7 +246,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             identifiers={(DOMAIN, identifier)},
             name=self.device_name,
             manufacturer=self._manufacturer,
-            model=self._model or None,
+            model=self._model or self.device_model or None,
             sw_version=self.firmware_version,
             configuration_url="https://github.com/StekkerDeal/aecc-battery-local",
         )
@@ -697,8 +726,23 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if info is None:
             _LOGGER.debug("DeviceManagement probe returned nothing (not supported on all AECC devices)")
             return
+        self._parse_device_management(info)
 
-        params = info.get("DeviceManagementInfo") or info.get("Parameters") or info.get("GetParameters") or {}
+    def _parse_device_management(self, info: dict[str, Any]) -> None:
+        """Parse identity + WiFi RSSI from a DeviceManagement response.
+
+        JET returns the data under the ``ControlInfo`` key (the same container key
+        as Energycontrolparameters); other devices (e.g. Sunpura) use
+        ``DeviceManagementInfo``. Shared by the setup probe and the periodic RSSI
+        refresh; only RSSI changes between calls, the identity fields are static.
+        """
+        params = (
+            info.get("DeviceManagementInfo")
+            or info.get("ControlInfo")
+            or info.get("Parameters")
+            or info.get("GetParameters")
+            or {}
+        )
         if not isinstance(params, dict):
             _LOGGER.debug(
                 "DeviceManagement params unexpected type: %s, response keys: %s",
@@ -709,10 +753,19 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         serial = params.get("8") or params.get(8)
         firmware = params.get("21") or params.get(21)
+        model = params.get("20") or params.get(20)
+        rssi = params.get("76") or params.get(76)
 
         if serial:
             self.device_serial = str(serial).strip()
-            _LOGGER.info("DeviceManagement serial: %s", self.device_serial)
+            _LOGGER.debug("DeviceManagement serial: %s", self.device_serial)
         if firmware:
             self.firmware_version = str(firmware).strip()
-            _LOGGER.info("DeviceManagement firmware: %s", self.firmware_version)
+            _LOGGER.debug("DeviceManagement firmware: %s", self.firmware_version)
+        if model:
+            self.device_model = str(model).strip()
+        if rssi is not None:
+            try:
+                self.wifi_rssi = int(float(str(rssi).strip()))
+            except (TypeError, ValueError):
+                _LOGGER.debug("DeviceManagement reg 76 (RSSI) not numeric: %r", rssi)

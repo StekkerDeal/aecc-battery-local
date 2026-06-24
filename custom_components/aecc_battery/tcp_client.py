@@ -68,20 +68,21 @@ class AeccTcpClient:
     async def send_set(self, command: str, extra: dict | None = None) -> dict[str, Any] | None:
         return await self._set(command, extra)
 
-    async def get_ems_register(self, reg_addr: Any) -> dict[str, Any] | None:
-        return await self._get("DeviceManagement", {"RegDeviceManagementAddr": reg_addr})
-
     async def get_device_management_info(self) -> dict[str, Any] | None:
-        """Read serial, firmware, model from DeviceManagement registers.
+        """Read serial, firmware, model and WiFi RSSI from DeviceManagement registers.
 
         Works on some AECC devices (e.g. Sunpura); times out on others (e.g. Lunergy).
         Uses a short 3-second timeout to avoid blocking setup.
+
+        The register list is a fixed safe set (identity + RSSI). It deliberately
+        never includes the device's credential/secret registers exposed on this
+        same accessor.
         """
         payload: dict[str, Any] = {
             "Get": "DeviceManagement",
             "SerialNumber": self._next_serial(),
             "CommandSource": "HA",
-            "RegDeviceManagementAddr": [2, 8, 9, 20, 21],
+            "RegDeviceManagementAddr": [2, 8, 9, 20, 21, 76],
         }
         async with self._io_lock:
             try:

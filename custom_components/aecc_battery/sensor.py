@@ -8,7 +8,12 @@ from datetime import datetime
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
+from homeassistant.const import (
+    PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    UnitOfEnergy,
+    UnitOfPower,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -71,6 +76,9 @@ async def async_setup_entry(
 
     if coordinator.firmware_version is not None:
         entities.append(AeccFirmwareSensor(coordinator, config_entry))
+
+    if coordinator.wifi_rssi is not None:
+        entities.append(AeccWifiSignalSensor(coordinator, config_entry))
 
     async_add_entities(entities)
 
@@ -340,3 +348,28 @@ class AeccFirmwareSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity
     @property
     def native_value(self) -> str | None:
         return self.coordinator.firmware_version
+
+
+class AeccWifiSignalSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
+    """WiFi signal strength of the datalogger from DeviceManagement reg 76."""
+
+    _attr_has_entity_name = True
+    _attr_name = "WiFi Signal"
+    _attr_icon = "mdi:wifi"
+    _attr_entity_category = "diagnostic"
+    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
+    _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        self._attr_unique_id = f"{config_entry.entry_id}_wifi_rssi"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return self.coordinator.device_info
+
+    @property
+    def native_value(self) -> int | None:
+        return self.coordinator.wifi_rssi

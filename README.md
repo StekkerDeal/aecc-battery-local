@@ -160,6 +160,7 @@ Every control command (direction, power, work mode, SOC limits) is automatically
 | PV String 1 Power | Sensor (W) | Individual PV string |
 | PV String 2 Power | Sensor (W) | Individual PV string |
 | Firmware Version | Sensor | Diagnostic; available on some AECC devices |
+| WiFi Signal | Sensor (dBm) | Diagnostic; datalogger WiFi signal strength, available on some AECC devices. Refreshes about once a minute |
 
 ### Controls
 

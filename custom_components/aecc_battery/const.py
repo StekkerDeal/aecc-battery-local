@@ -28,6 +28,10 @@ RECONNECT_MAX_COOLDOWN = 60  # seconds – cap on the escalating cooldown
 READ_TIMEOUT_SUSPECT_THRESHOLD = 3  # consecutive GET read timeouts before recycling the socket
 MAX_BATTERY_POWER_W = 2400  # watts – hardware rated max
 MAX_REGISTER_POWER_DEFAULT = 800  # watts – default local TCP limit without extended power
+# How often to re-read the WiFi RSSI (DeviceManagement reg 76). It is a separate
+# TCP command with its own timeout, so we throttle it well below POLL_INTERVAL to
+# avoid doubling traffic; RSSI changes slowly so 60s granularity is plenty.
+WIFI_RSSI_REFRESH_INTERVAL = 60  # seconds
 
 # Known AECC brands (for config flow dropdown)
 KNOWN_BRANDS = [

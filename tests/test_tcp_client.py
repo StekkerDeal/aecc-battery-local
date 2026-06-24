@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -151,3 +152,27 @@ async def test_slow_but_healthy_never_recycles(monkeypatch, recorded_sleeps) -> 
 
     client._manager.close.assert_not_called()
     assert client._read_timeout_streak == 0
+
+
+# ── DeviceManagement hardening ─────────────────────────────────────────────────
+
+
+def test_no_arbitrary_register_reader() -> None:
+    """The get_ems_register foot-gun is gone: no path can read an arbitrary reg."""
+    assert not hasattr(AeccTcpClient, "get_ems_register")
+
+
+async def test_device_management_request_is_a_safe_fixed_list(monkeypatch) -> None:
+    """The DeviceManagement read requests only the fixed identity + RSSI set.
+
+    Asserting the exact list guarantees no other (incl. credential/secret)
+    register can ever be requested by this path.
+    """
+    reader, writer = _make_rw(read_return=b'{"Response":"DeviceManagement","ControlInfo":{}}')
+    _patch_open(monkeypatch, return_value=(reader, writer))
+    client = AeccTcpClient("h", 1)
+
+    await client.get_device_management_info()
+
+    payload = json.loads(writer.write.call_args[0][0].decode("utf-8"))
+    assert set(payload["RegDeviceManagementAddr"]) == {2, 8, 9, 20, 21, 76}
