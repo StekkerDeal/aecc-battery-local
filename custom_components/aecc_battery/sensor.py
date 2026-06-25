@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
     UnitOfEnergy,
     UnitOfPower,
 )
@@ -334,7 +335,7 @@ class AeccFirmwareSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity
     _attr_has_entity_name = True
     _attr_name = "Firmware Version"
     _attr_icon = "mdi:chip"
-    _attr_entity_category = "diagnostic"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
@@ -356,7 +357,7 @@ class AeccWifiSignalSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEnti
     _attr_has_entity_name = True
     _attr_name = "WiFi Signal"
     _attr_icon = "mdi:wifi"
-    _attr_entity_category = "diagnostic"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
     _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
     _attr_state_class = SensorStateClass.MEASUREMENT

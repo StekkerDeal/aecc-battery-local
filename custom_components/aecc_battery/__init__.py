@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
 
 from .const import (
     BRAND_PROFILES,
@@ -60,12 +61,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_read_initial_state()
     await coordinator.async_probe_device_management()
 
+    # Up to 1.4.3 the device was keyed by host:port (the serial never parsed on
+    # JET). 1.4.4 fixed the parse, so the identifier flips to the serial and HA
+    # would otherwise create a second device and orphan the old one. Migrate the
+    # old device in place before entities attach.
+    _migrate_device_identifier(hass, host, port, coordinator.device_serial)
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     _LOGGER.info("AECC Battery '%s' (%s) set up at %s:%s", name, manufacturer, host, port)
     return True
+
+
+def _migrate_device_identifier(hass: HomeAssistant, host: str, port: int, serial: str | None) -> None:
+    """Move the pre-1.4.4 host:port device onto the serial identifier.
+
+    No-op when the device never reported a serial (identifier stays host:port) or
+    when there is no legacy device to migrate. If a serial-keyed device already
+    exists (e.g. a 1.4.4 install already created the duplicate), the orphaned
+    host:port device is removed instead of renamed.
+    """
+    if not serial:
+        return
+    registry = dr.async_get(hass)
+    old = registry.async_get_device(identifiers={(DOMAIN, f"{host}:{port}")})
+    if old is None:
+        return
+    existing = registry.async_get_device(identifiers={(DOMAIN, serial)})
+    if existing is not None and existing.id != old.id:
+        registry.async_remove_device(old.id)
+        _LOGGER.info("Removed orphaned host:port device for %s (now keyed by serial)", host)
+    else:
+        registry.async_update_device(old.id, new_identifiers={(DOMAIN, serial)})
+        _LOGGER.info("Migrated device identifier from %s:%s to serial", host, port)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:

@@ -13,11 +13,16 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 
 from custom_components.aecc_battery.const import BRAND_PROFILES
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
-from custom_components.aecc_battery.sensor import AeccSensor, AeccWifiSignalSensor
+from custom_components.aecc_battery.sensor import (
+    AeccFirmwareSensor,
+    AeccSensor,
+    AeccWifiSignalSensor,
+)
 
 
 @pytest.fixture
@@ -143,3 +148,14 @@ def test_wifi_signal_sensor_reports_rssi(coordinator: AeccBatteryCoordinator, co
     # A later throttled refresh propagates without re-creating the entity.
     coordinator.wifi_rssi = -55
     assert sensor.native_value == -55
+
+
+def test_diagnostic_sensors_use_entity_category_enum(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    """entity_category must resolve to the EntityCategory enum, not a bare string.
+
+    HA rejects a string at registration ("entity_category must be a valid
+    EntityCategory instance"), which silently dropped both diagnostic sensors
+    before 1.4.5.
+    """
+    assert AeccFirmwareSensor(coordinator, config_entry).entity_category is EntityCategory.DIAGNOSTIC
+    assert AeccWifiSignalSensor(coordinator, config_entry).entity_category is EntityCategory.DIAGNOSTIC
