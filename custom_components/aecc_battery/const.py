@@ -126,12 +126,12 @@ REG_CUSTOM_MODE = "3030"  # 0 = off, 1 = on
 #        "1,00:00,23:59,-2400,0,6,0,0,0,100,10"   (charge at 2400 W)
 #        "0,00:00,00:00,0,0,0,0,0,0,100,10"       (idle / disabled)
 #
-# AEG (Solarcube) variant: the firmware ignores the signed-power field above and
-# instead expects two unsigned power fields - charge in field 3, discharge in field 4
-# (mirrors the device's own slots 3004-3018, e.g. "0,00:00,00:00,1000,500,..."):
-#        "1,00:00,23:59,500,0,6,5,0,0,100,11"    (AEG charge at 500 W)
-#        "1,00:00,23:59,0,800,6,5,0,0,100,11"    (AEG discharge at 800 W)
-# Gated on BRAND_AEG; see async_set_battery_control / async_read_initial_state.
+# AEG (Solarcube) variant: same signed-power slot as every other brand, differing
+# only in field 6, which AEG wants as 0 (other brands use field7 = 5/4 there). A live
+# capture of the AEG app's own write (issue #8) confirmed the signed field and field 6 = 0:
+#        "1,00:00,23:59,-500,0,6,0,0,0,100,10"   (AEG charge at 500 W)
+#        "1,00:00,23:59,800,0,6,0,0,0,100,10"    (AEG discharge at 800 W)
+# Gated on BRAND_AEG; see _encode_active_slot in coordinator.
 REG_CONTROL_TIME1 = "3003"  # First active time slot
 
 REG_MIN_SOC = "3023"  # Minimum discharge SOC  (confirmed: currently 10)

@@ -529,33 +529,23 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> str:
         """Build the active (timeSwitch=1) control slot string for register 3003.
 
-        Most brands encode the setpoint as a single signed power field (negative =
-        charge, positive = discharge), confirmed on AFERIY. AEG (Solarcube) ignores
-        that and expects two unsigned fields instead - charge in field 3, discharge in
-        field 4 - so it gets its own layout. Idle/disabled slots are all-zero and
-        layout-neutral, so they do not go through here. See REG_CONTROL_TIME1 in const.
+        All brands encode the setpoint as a single signed power field (negative =
+        charge, positive = discharge), confirmed on AFERIY and, via a live app-write
+        capture (issue #8), on AEG (Solarcube). AEG differs only in field 6, which it
+        wants as 0 (other brands work with field7 there). Idle/disabled slots are
+        all-zero and layout-neutral, so they do not go through here. See
+        REG_CONTROL_TIME1 in const.
         """
-        if self._manufacturer == BRAND_AEG:
-            charge_p = power_w if direction == "Charge" else 0
-            discharge_p = power_w if direction == "Discharge" else 0
-            return f"1,00:00,23:59,{charge_p},{discharge_p},6,{field7},0,0,{charge_soc},{discharge_soc}"
         reg_power = -power_w if direction == "Charge" else power_w
-        return f"1,00:00,23:59,{reg_power},0,6,{field7},0,0,{charge_soc},{discharge_soc}"
+        field6 = 0 if self._manufacturer == BRAND_AEG else field7
+        return f"1,00:00,23:59,{reg_power},0,6,{field6},0,0,{charge_soc},{discharge_soc}"
 
     def _decode_active_slot(self, parts: list[str]) -> tuple[int, str]:
         """Recover (power_w, direction) from an active slot's CSV fields.
 
-        Inverse of ``_encode_active_slot``: AEG reads field 3 as charge and field 4 as
-        discharge (both unsigned); other brands read field 3 as a signed setpoint.
+        Inverse of ``_encode_active_slot``: field 3 is a signed setpoint
+        (negative = charge, positive = discharge) on all brands.
         """
-        if self._manufacturer == BRAND_AEG:
-            charge_p = int(parts[3])
-            discharge_p = int(parts[4])
-            if charge_p > 0:
-                return charge_p, "Charge"
-            if discharge_p > 0:
-                return discharge_p, "Discharge"
-            return 0, "Idle"
         reg_power = int(parts[3])
         if reg_power > 0:
             return reg_power, "Discharge"

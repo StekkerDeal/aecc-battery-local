@@ -58,7 +58,7 @@ def coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
 
 @pytest.fixture
 def aeg_coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
-    """Coordinator configured as AEG, which uses the two-field slot layout."""
+    """Coordinator configured as AEG, which uses field 6 = 0 in the control slot."""
     coord = AeccBatteryCoordinator(
         hass,
         mock_client,
@@ -344,29 +344,28 @@ async def test_set_battery_control_idle(
     assert slot.startswith("0,")
 
 
-async def test_aeg_charge_uses_two_field_layout(
+async def test_aeg_charge_uses_signed_field_with_field6_zero(
     aeg_coordinator: AeccBatteryCoordinator,
 ) -> None:
-    """AEG charge puts power in field 3 (unsigned), field 4 = 0, no signed value."""
-    aeg_coordinator.data = {"SSumInfoList": {}}  # field7 = 4
+    """AEG charge is the signed setpoint (negative) with field 6 = 0 (issue #8)."""
+    aeg_coordinator.data = {"SSumInfoList": {}}  # field7 would be 4 for non-AEG
     result = await aeg_coordinator.async_set_battery_control("Charge", 500)
     assert result is True
 
     slot = aeg_coordinator.client.set_control_parameters.call_args[0][0][REG_CONTROL_TIME1]
-    assert slot == "1,00:00,23:59,500,0,6,4,0,0,100,10"
-    assert "-500" not in slot
+    assert slot == "1,00:00,23:59,-500,0,6,0,0,0,100,10"
 
 
-async def test_aeg_discharge_uses_two_field_layout(
+async def test_aeg_discharge_uses_signed_field_with_field6_zero(
     aeg_coordinator: AeccBatteryCoordinator,
 ) -> None:
-    """AEG discharge puts power in field 4, field 3 = 0."""
-    aeg_coordinator.data = {"Storage_list": [{}]}  # field7 = 5
+    """AEG discharge is the signed setpoint (positive) with field 6 = 0."""
+    aeg_coordinator.data = {"Storage_list": [{}]}  # field7 would be 5 for non-AEG
     result = await aeg_coordinator.async_set_battery_control("Discharge", 800)
     assert result is True
 
     slot = aeg_coordinator.client.set_control_parameters.call_args[0][0][REG_CONTROL_TIME1]
-    assert slot == "1,00:00,23:59,0,800,6,5,0,0,100,10"
+    assert slot == "1,00:00,23:59,800,0,6,0,0,0,100,10"
 
 
 async def test_aeg_idle_slot_unchanged(
@@ -395,7 +394,7 @@ async def test_aeg_slot_round_trips_through_reader(
     """An AEG charge slot is read back as Charge, not misread as Discharge."""
     aeg_coordinator.client.get_control_parameters.return_value = {
         "ControlInfo": {
-            "3003": "1,00:00,23:59,500,0,6,5,0,0,100,11",
+            "3003": "1,00:00,23:59,-500,0,6,0,0,0,100,11",
             "3000": "1",
             "3030": "1",
         }
