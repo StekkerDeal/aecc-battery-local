@@ -131,6 +131,15 @@ class AeccSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
 
     @property
     def available(self) -> bool:
+        # A currently-acceptable reading means available, regardless of how long
+        # the previous hold has run. This also breaks a deadlock: once the hold
+        # window expires HA stops evaluating native_value (the only path that
+        # accepts a reading and refreshes the cleaner anchor), so without this a
+        # stale anchor would keep the sensor unavailable indefinitely even while
+        # the device reports good values (observed on JET: SOC stuck unavailable
+        # for hours after a discharge glitch, until a reload).
+        if self.coordinator.get_value(self._canonical_key) is not None:
+            return True
         if self._last_value is None:
             return self.coordinator.last_update_success
         if self._within_hold_window():

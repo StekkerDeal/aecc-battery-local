@@ -132,6 +132,30 @@ def test_recovery_resets_availability(coordinator: AeccBatteryCoordinator, confi
     assert sensor.available is True
 
 
+def test_recovers_from_stuck_unavailable(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    """A good reading after the hold window expired recovers the sensor (no reload).
+
+    Reproduces the deadlock where `available` went False once the hold window
+    expired, which stopped HA evaluating `native_value` (the only path that
+    refreshes the cleaner anchor), so the sensor stayed unavailable forever even
+    while the device reported valid values.
+    """
+    sensor = _make_sensor(coordinator, config_entry)
+
+    # Establish a baseline accepted value (SOC 80), then age the anchor well past
+    # the hold window so the entity would have gone unavailable.
+    coordinator.data = {"Storage_list": [{"BatterySoc": "80"}], "SSumInfoList": {}}
+    assert sensor.native_value == 80.0
+    hold = coordinator.brand_profile["hold_last_value_seconds"]
+    coordinator._cleaner_last_accepted_at["battery_soc"] = time.time() - hold - 6 * 3600
+
+    # Device now reports a valid SOC at idle (no active flow). Pre-fix this stayed
+    # unavailable with the anchor frozen at 80; it must now self-recover.
+    coordinator.data = {"Storage_list": [{"BatterySoc": "22"}], "SSumInfoList": {}}
+    assert sensor.available is True
+    assert sensor.native_value == 22.0
+
+
 def test_first_reading_treated_as_in_window(coordinator: AeccBatteryCoordinator, config_entry) -> None:
     """Before any acceptance, hold-window check should not preemptively hide entity."""
     sensor = _make_sensor(coordinator, config_entry)
