@@ -169,6 +169,7 @@ Every control command (direction, power, work mode, SOC limits) is automatically
 |---|---|---|
 | Battery Direction | Select | Charge, Discharge, or Idle |
 | Battery Power | Number (slider) | Power target: 0-800W (or 0-2400W extended) |
+| Power Setpoint | Number (box) | Signed one-write control: positive = charge, negative = discharge, 0 = idle. Made for external energy managers |
 | Discharge Limit | Number (slider) | Min SOC before discharge stops (5-50%) |
 | Charge Limit | Number (slider) | Max SOC before charging stops (50-100%) |
 | Work Mode | Select | Self-Consumption (AI), Custom/Manual |
@@ -214,6 +215,10 @@ Selecting a direction (or moving the Power slider) automatically switches to Cus
 
 To stop the battery, set Battery Direction to Idle (or Power to 0). This holds an active 0 W setpoint. There is no separate "Disabled" mode, because turning EMS off does not reliably stop the battery (it hands control back to the device's own logic).
 
+### Power Setpoint (one write)
+
+For automations and external controllers there is also **Power Setpoint**: a single signed number. Positive = charge, negative = discharge, 0 = idle, in watts. Writing it does the same as setting Direction + Power together (including the switch to Custom mode), but in one service call, so an automation can never race between the two writes. All control entities stay in sync whichever one you use.
+
 ### Work Modes
 
 | Mode | Description |
@@ -225,6 +230,51 @@ To stop the battery, set Battery Direction to Idle (or Power to 0). This holds a
 
 - **Discharge Limit**: stops discharging at this SOC (default 10%)
 - **Charge Limit**: stops charging at this SOC (default 98%)
+
+---
+
+## Using with a HEMS (EMHASS example)
+
+This integration deliberately contains no planner: a home energy management system (HEMS) computes *when* to charge or discharge (from dynamic prices, PV forecast, load), and this integration executes it. Any HEMS that can call Home Assistant services works; [EMHASS](https://github.com/davidusb-geek/emhass) is the most complete open-source option, [evcc](https://docs.evcc.io/en/docs/features/battery) (which can read HA entities directly) is a simpler threshold-based alternative.
+
+**Mind the sign conventions.** The Power Setpoint entity uses **positive = charge**; EMHASS publishes its battery schedule (`sensor.p_batt_forecast`) with **positive = discharge**. Flip the sign in the automation:
+
+```yaml
+automation:
+  - alias: "EMHASS: apply battery setpoint"
+    triggers:
+      - trigger: state
+        entity_id: sensor.p_batt_forecast
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.to_state.state not in ('unknown', 'unavailable') }}"
+    actions:
+      - action: number.set_value
+        target:
+          entity_id: number.my_battery_power_setpoint
+        data:
+          # EMHASS: + = discharge. Setpoint: + = charge. Hence the minus.
+          value: "{{ -(states('sensor.p_batt_forecast') | float(0)) | round(0) }}"
+
+  - alias: "EMHASS: kill-switch (stale plan -> idle)"
+    triggers:
+      - trigger: state
+        entity_id: sensor.p_batt_forecast
+        to: ["unknown", "unavailable"]
+        for: "00:30:00"
+    actions:
+      - action: number.set_value
+        target:
+          entity_id: number.my_battery_power_setpoint
+        data:
+          value: 0
+```
+
+The kill-switch matters: without it, a crashed optimizer leaves the last setpoint running indefinitely.
+
+Configuration tips:
+- Set EMHASS's battery bounds to match this integration: `battery_discharge_power_max` / `battery_charge_power_max` = your power limit (800 W, or 2400 W with extended power), and keep `battery_minimum_state_of_charge` / `battery_maximum_state_of_charge` in sync with the **Discharge Limit** / **Charge Limit** entities.
+- The device's own protection still applies: the battery stops at its SOC limits regardless of the commanded setpoint.
 
 ---
 

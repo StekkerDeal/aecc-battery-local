@@ -601,6 +601,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # mode. Record it and refresh every control entity so the Work
             # Mode selector reflects Custom instead of its stale value.
             self._commanded_direction = direction
+            self._commanded_power = power_w
             self._current_work_mode = MODE_CUSTOM
             self.async_update_listeners()
         return success

@@ -25,10 +25,59 @@ async def async_setup_entry(
     async_add_entities(
         [
             AeccPowerSlider(coordinator, config_entry),
+            AeccPowerSetpoint(coordinator, config_entry),
             AeccMinSoc(coordinator, config_entry),
             AeccMaxSoc(coordinator, config_entry),
         ]
     )
+
+
+class AeccPowerSetpoint(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
+    """Signed power setpoint: positive = charge, negative = discharge, 0 = idle.
+
+    One-write control surface for external energy managers (EMHASS, evcc);
+    the direction+power entities need two ordered writes. Step 1 because
+    optimizers command arbitrary watt values.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Power Setpoint"
+    _attr_icon = "mdi:battery-sync-outline"
+    _attr_device_class = NumberDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_native_step = 1
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        # "_power_setpoint" is historically taken by AeccPowerSlider.
+        self._attr_unique_id = f"{config_entry.entry_id}_signed_power_setpoint"
+        self._attr_native_min_value = -coordinator.max_register_power
+        self._attr_native_max_value = coordinator.max_register_power
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return self.coordinator.device_info
+
+    @property
+    def native_value(self) -> float:
+        direction = self.coordinator.commanded_direction
+        if direction == "Charge":
+            return self.coordinator.commanded_power
+        if direction == "Discharge":
+            return -self.coordinator.commanded_power
+        return 0
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    async def async_set_native_value(self, value: float) -> None:
+        # The coordinator records direction + power + Custom mode and calls
+        # async_update_listeners() on success, refreshing every entity.
+        if not await self.coordinator.async_set_power_setpoint(value):
+            _LOGGER.warning("Failed to set power setpoint to %s W", value)
 
 
 class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
