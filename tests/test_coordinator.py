@@ -243,16 +243,15 @@ def test_get_value_from_storage(coordinator: AeccBatteryCoordinator) -> None:
     assert coordinator.get_value("ac_charging_power") == 500.0
 
 
-def test_get_value_storage_preferred_over_summary(
+def test_get_value_summary_preferred_over_storage(
     coordinator: AeccBatteryCoordinator,
 ) -> None:
-    """Test Storage_list is preferred over SSumInfoList for sensors mapped storage-first."""
+    """SSumInfoList wins over Storage_list for system values."""
     coordinator.data = {
         "Storage_list": [{"BatterySoc": "80"}],
         "SSumInfoList": {"AverageBatteryAverageSOC": "75"},
     }
-    # battery_soc maps storage first
-    assert coordinator.get_value("battery_soc") == 80.0
+    assert coordinator.get_value("battery_soc") == 75.0
 
 
 def test_get_value_fallback_to_default(coordinator: AeccBatteryCoordinator) -> None:

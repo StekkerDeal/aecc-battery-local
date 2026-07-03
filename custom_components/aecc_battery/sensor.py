@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime
+from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -48,6 +49,20 @@ _SENSORS = [
     ("pv2_power", "PV String 2 Power", "pv2_power", UnitOfPower.WATT, "mdi:solar-panel", True),
 ]
 
+# ── Per-unit sensors (multi-unit systems only) ────────────────────────────────
+# _SENSORS minus pv_power/grid_power (system-level quantities), plus
+# battery_charging_power (the hub only exposes it folded into Battery Power).
+_UNIT_SENSORS = [s for s in _SENSORS if s[0] not in ("pv_power", "grid_power")] + [
+    (
+        "battery_charging_power",
+        "Battery Charging Power",
+        "battery_charging_power",
+        UnitOfPower.WATT,
+        "mdi:battery-arrow-up",
+        True,
+    ),
+]
+
 # ── Energy counter definitions ────────────────────────────────────────────────
 # (key, name, power_keys, icon)
 _ENERGY_SENSORS = [
@@ -57,6 +72,14 @@ _ENERGY_SENSORS = [
 ]
 
 _MAX_GAP_SECONDS = 60
+
+
+def _derive_status(charge: float, ac_charge: float, discharge: float) -> str:
+    if charge > 0 or ac_charge > 0:
+        return "Charging"
+    if discharge > 0:
+        return "Discharging"
+    return "Idle"
 
 
 async def async_setup_entry(
@@ -80,6 +103,19 @@ async def async_setup_entry(
 
     if coordinator.wifi_rssi is not None:
         entities.append(AeccWifiSignalSensor(coordinator, config_entry))
+
+    # Multi-unit systems: one child device per battery (controls stay hub-only;
+    # the protocol has no per-unit control).
+    units = coordinator.units
+    if len(units) > 1:
+        for unit in units:
+            for key, name, canonical_key, unit_of_meas, icon, is_power in _UNIT_SENSORS:
+                entities.append(
+                    AeccUnitSensor(
+                        coordinator, config_entry, unit, key, name, canonical_key, unit_of_meas, icon, is_power
+                    )
+                )
+            entities.append(AeccUnitStatusSensor(coordinator, config_entry, unit))
 
     async_add_entities(entities)
 
@@ -164,6 +200,82 @@ class AeccSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
             return True
         hold_seconds = float(self.coordinator.brand_profile.get("hold_last_value_seconds", 120))
         return (time.time() - last_accepted_at) <= hold_seconds
+
+
+class AeccUnitSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
+    """One telemetry value of one battery unit; raw, keyed on its serial."""
+
+    _attr_has_entity_name = True
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        coordinator: AeccBatteryCoordinator,
+        config_entry: ConfigEntry,
+        unit: dict[str, Any],
+        key: str,
+        name: str,
+        canonical_key: str,
+        unit_of_meas: str,
+        icon: str,
+        is_power: bool,
+    ) -> None:
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        self._unit_key = coordinator.unit_key(unit)
+        self._canonical_key = canonical_key
+        self._attr_unique_id = f"{config_entry.entry_id}_unit{self._unit_key}_{key}"
+        self._attr_name = name
+        self._attr_native_unit_of_measurement = unit_of_meas
+        self._attr_icon = icon
+        self._attr_device_class = SensorDeviceClass.POWER if is_power else SensorDeviceClass.BATTERY
+        self._attr_device_info = coordinator.unit_device_info(unit)
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.get_unit_value(self._unit_key, self._canonical_key)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+
+class AeccUnitStatusSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
+    """Per-unit Charging / Discharging / Idle, derived from power (StorageStatus is an online flag)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Battery Status"
+    _attr_icon = "mdi:battery-heart-variant"
+
+    def __init__(
+        self,
+        coordinator: AeccBatteryCoordinator,
+        config_entry: ConfigEntry,
+        unit: dict[str, Any],
+    ) -> None:
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        self._unit_key = coordinator.unit_key(unit)
+        self._attr_unique_id = f"{config_entry.entry_id}_unit{self._unit_key}_battery_status"
+        self._attr_device_info = coordinator.unit_device_info(unit)
+
+    def _powers(self) -> tuple[float | None, float | None, float | None]:
+        return (
+            self.coordinator.get_unit_value(self._unit_key, "battery_charging_power"),
+            self.coordinator.get_unit_value(self._unit_key, "ac_charging_power"),
+            self.coordinator.get_unit_value(self._unit_key, "battery_discharging_power"),
+        )
+
+    @property
+    def native_value(self) -> str | None:
+        charge, ac_charge, discharge = self._powers()
+        if charge is None and ac_charge is None and discharge is None:
+            return None
+        return _derive_status(charge or 0, ac_charge or 0, discharge or 0)
+
+    @property
+    def available(self) -> bool:
+        return super().available and any(p is not None for p in self._powers())
 
 
 class AeccEnergySensor(CoordinatorEntity[AeccBatteryCoordinator], RestoreEntity, SensorEntity):
@@ -328,12 +440,7 @@ class AeccBatteryStatusSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorE
             discharge_f = float(discharge or 0)
         except (TypeError, ValueError):
             return self._last_status
-        if charge_f > 0 or ac_charge_f > 0:
-            status = "Charging"
-        elif discharge_f > 0:
-            status = "Discharging"
-        else:
-            status = "Idle"
+        status = _derive_status(charge_f, ac_charge_f, discharge_f)
         self._last_status = status
         return status
 

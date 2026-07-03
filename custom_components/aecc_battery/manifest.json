@@ -5,6 +5,7 @@
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/StekkerDeal/aecc-battery-local",
+  "integration_type": "hub",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/StekkerDeal/aecc-battery-local/issues",
   "quality_scale": "bronze",

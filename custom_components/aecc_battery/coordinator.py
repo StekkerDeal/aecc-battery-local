@@ -41,56 +41,34 @@ from .tcp_client import AeccTcpClient
 _LOGGER = logging.getLogger(__name__)
 
 # ── Unified field mapping ─────────────────────────────────────────────────────
-# Maps canonical sensor keys to (source, field_name, scale) tuples.
-# Storage_list is tried first (Sunpura), then SSumInfoList (Lunergy fallback).
-# Storage_list power values are 10x scaled; SSumInfoList values are in watts.
+# Maps canonical sensor keys to
+#   (summary_field, storage_field, storage_scale, aggregate_mode).
+# System values read the summary field (SSumInfoList, watts) when present,
+# else aggregate the Storage_list entries (one per unit, mostly deciwatts)
+# with the given scale. summary_field is None where no summary field matches
+# a straight aggregate of the units.
 # ──────────────────────────────────────────────────────────────────────────────
 
-_FIELD_MAP: dict[str, list[tuple[str, str, float]]] = {
-    "battery_soc": [
-        ("storage", "BatterySoc", 1.0),
-        ("summary", "AverageBatteryAverageSOC", 1.0),
-    ],
-    "ac_charging_power": [
-        ("storage", "AcChargingPower", 0.1),
-        ("summary", "TotalACChargePower", 1.0),
-    ],
-    "battery_discharging_power": [
-        ("storage", "BatteryDischargingPower", 0.1),
-        ("summary", "TotalBatteryOutputPower", 1.0),
-    ],
-    "battery_charging_power": [
-        ("storage", "BatteryChargingPower", 0.1),
-        ("summary", "TotalACChargePower", 1.0),
-    ],
-    "pv_power": [
-        ("summary", "TotalPVPower", 1.0),
-        ("storage", "PvChargingPower", 0.1),
-    ],
-    "pv_charging_power": [
-        ("summary", "TotalPVChargePower", 1.0),
-        ("storage", "PvChargingPower", 0.1),
-    ],
-    "grid_power": [
-        ("summary", "MeterTotalActivePower", 1.0),
-        ("storage", "AcInActivePower", 0.1),
-    ],
-    "grid_export_power": [],  # Derived in sensor from grid_power (positive values only)
-    "backup_power": [
-        # OffGridLoadPower is reported in watts directly, unlike other storage
-        # power fields which are in deciwatts (0.1x scale). Verified against a
-        # 2000W heater test on 2026-04-20: battery_discharging_power read
-        # ~2040W while backup_power with the 0.1 multiplier read ~193W.
-        ("storage", "OffGridLoadPower", 1.0),
-        ("summary", "TotalBackUpPower", 1.0),
-    ],
-    "pv1_power": [
-        ("storage", "Pv1Power", 1.0),
-    ],
-    "pv2_power": [
-        ("storage", "Pv2Power", 1.0),
-    ],
+_AGG_SUM = "sum"
+_AGG_AVG = "avg"
+
+_FIELD_MAP: dict[str, tuple[str | None, str, float, str]] = {
+    "battery_soc": ("AverageBatteryAverageSOC", "BatterySoc", 1.0, _AGG_AVG),
+    "ac_charging_power": ("TotalACChargePower", "AcChargingPower", 0.1, _AGG_SUM),
+    "battery_discharging_power": ("TotalBatteryOutputPower", "BatteryDischargingPower", 0.1, _AGG_SUM),
+    # TotalChargePower is not the unit sum (DC-side, after losses) — always sum.
+    "battery_charging_power": (None, "BatteryChargingPower", 0.1, _AGG_SUM),
+    "pv_power": ("TotalPVPower", "PvChargingPower", 0.1, _AGG_SUM),
+    "pv_charging_power": ("TotalPVChargePower", "PvChargingPower", 0.1, _AGG_SUM),
+    # MeterTotalActivePower is the site CT meter, not a sum of the units.
+    "grid_power": ("MeterTotalActivePower", "AcInActivePower", 0.1, _AGG_SUM),
+    # OffGridLoadPower is watts, not deciwatts (verified with a 2000W heater
+    # test on 2026-04-20).
+    "backup_power": ("TotalBackUpPower", "OffGridLoadPower", 1.0, _AGG_SUM),
+    "pv1_power": (None, "Pv1Power", 1.0, _AGG_SUM),
+    "pv2_power": (None, "Pv2Power", 1.0, _AGG_SUM),
 }
+# grid_export_power is derived in the sensor from grid_power (positive only).
 
 
 class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -240,10 +218,13 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._current_work_mode = value
 
     @property
+    def hub_identifier(self) -> str:
+        return self.device_serial or f"{self.client.host}:{self.client.port}"
+
+    @property
     def device_info(self) -> DeviceInfo:
-        identifier = self.device_serial or f"{self.client.host}:{self.client.port}"
         return DeviceInfo(
-            identifiers={(DOMAIN, identifier)},
+            identifiers={(DOMAIN, self.hub_identifier)},
             name=self.device_name,
             manufacturer=self._manufacturer,
             model=self._model or self.device_model or None,
@@ -252,41 +233,39 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     @property
-    def storage(self) -> dict[str, Any]:
+    def units(self) -> list[dict[str, Any]]:
+        """All Storage_list entries — one per physical battery unit."""
         if not self.data:
-            return {}
-        return (self.data.get("Storage_list") or [{}])[0]
+            return []
+        return self.data.get("Storage_list") or []
+
+    @staticmethod
+    def unit_key(unit: dict[str, Any]) -> str:
+        """Stable unit identity: StorageSN, falling back to DevAddr."""
+        sn = unit.get("StorageSN")
+        if sn:
+            return str(sn).strip()
+        return f"addr{unit.get('DevAddr')}"
+
+    def unit_identifier(self, unit: dict[str, Any]) -> str:
+        """Registry identifier for one battery unit, namespaced under the hub."""
+        return f"{self.hub_identifier}_unit_{self.unit_key(unit)}"
+
+    def unit_device_info(self, unit: dict[str, Any]) -> DeviceInfo:
+        """Child DeviceInfo for one battery unit, nested under the hub device."""
+        devaddr = unit.get("DevAddr")
+        label = devaddr if devaddr is not None else self.unit_key(unit)
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.unit_identifier(unit))},
+            name=f"{self.device_name} Battery {label}",
+            manufacturer=self._manufacturer,
+            model=self._model or self.device_model or None,
+            via_device=(DOMAIN, self.hub_identifier),
+        )
 
     @property
     def summary(self) -> dict[str, Any]:
         return self.data.get("SSumInfoList", {}) if self.data else {}
-
-    _STORAGE_POWER_KEYS = {
-        "PvChargingPower",
-        "AcChargingPower",
-        "BatteryDischargingPower",
-        "AcInActivePower",
-        "OffGridLoadPower",
-        "BatteryChargingPower",
-        "Pv1Power",
-        "Pv2Power",
-        "Pv3Power",
-        "Pv4Power",
-    }
-
-    def storage_val(self, key: str, default: Any = None) -> Any:
-        val = self.storage.get(key, default)
-        if val is None:
-            return default
-        if key in self._STORAGE_POWER_KEYS:
-            try:
-                return round(float(val) / 10, 1)
-            except (TypeError, ValueError):
-                return val
-        return val
-
-    def summary_val(self, key: str, default: Any = None) -> Any:
-        return self.summary.get(key, default)
 
     def _wall_power_signal_w(self) -> float | None:
         """Best-effort wall-side power magnitude for cleaner physics checks.
@@ -295,34 +274,17 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         negative when discharging. None when neither AECC source has the
         data (cleaners then skip checks that depend on observable flow).
 
-        Reads raw fields directly to avoid triggering nested cleaner calls
-        from get_value, this is the activity signal cleaners depend on,
-        not a published sensor value.
+        Aggregates raw Storage_list fields directly to avoid triggering
+        nested cleaner calls from get_value, this is the activity signal
+        cleaners depend on, not a published sensor value.
         """
-        for field, scale in (
-            ("AcChargingPower", 0.1),
-            ("BatteryChargingPower", 0.1),
-        ):
-            val = self.storage.get(field)
-            if val is not None:
-                try:
-                    charge = float(val) * scale
-                    if charge > 0:
-                        return charge
-                except (TypeError, ValueError):
-                    pass
-        for field, scale in (
-            ("BatteryDischargingPower", 0.1),
-            ("AcChargingPower", 0.1),
-        ):
-            val = self.storage.get(field)
-            if val is not None:
-                try:
-                    discharge = float(val) * scale
-                    if discharge > 0:
-                        return -discharge if field == "BatteryDischargingPower" else discharge
-                except (TypeError, ValueError):
-                    pass
+        for field in ("AcChargingPower", "BatteryChargingPower"):
+            charge = self._aggregate_storage(field, 0.1, _AGG_SUM)
+            if charge is not None and charge > 0:
+                return charge
+        discharge = self._aggregate_storage("BatteryDischargingPower", 0.1, _AGG_SUM)
+        if discharge is not None and discharge > 0:
+            return -discharge
         # Fall back to the summary fields (Lunergy primary).
         ac = self.summary.get("TotalACChargePower")
         out = self.summary.get("TotalBatteryOutputPower")
@@ -339,20 +301,61 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             pass
         return None
 
-    def get_value(self, canonical_key: str, default: Any = None) -> Any:
-        entries = _FIELD_MAP.get(canonical_key)
-        if not entries:
-            return default
-        raw_value: float | None = None
-        for source, field, scale in entries:
-            container = self.storage if source == "storage" else self.summary
-            val = container.get(field)
+    def _aggregate_storage(self, field: str, scale: float, mode: str) -> float | None:
+        """Aggregate one Storage_list field across all units (sum or avg); None if absent everywhere."""
+        values: list[float] = []
+        for unit in self.units:
+            val = unit.get(field)
+            if val is None:
+                continue
+            try:
+                values.append(float(val) * scale)
+            except (TypeError, ValueError):
+                continue
+        if not values:
+            return None
+        total = sum(values)
+        if mode == _AGG_AVG:
+            total /= len(values)
+        return round(total, 1)
+
+    def _system_value(self, canonical_key: str) -> float | None:
+        """Raw (pre-cleaner) system value: summary field first, else aggregate the units."""
+        spec = _FIELD_MAP.get(canonical_key)
+        if spec is None:
+            return None
+        summary_field, storage_field, storage_scale, agg_mode = spec
+        if summary_field is not None:
+            val = self.summary.get(summary_field)
             if val is not None:
                 try:
-                    raw_value = round(float(val) * scale, 1)
-                    break
+                    return round(float(val), 1)
                 except (TypeError, ValueError):
-                    continue
+                    pass
+        return self._aggregate_storage(storage_field, storage_scale, agg_mode)
+
+    def get_unit_value(self, unit_key: str, canonical_key: str) -> float | None:
+        """Raw per-unit value, located by stable key (never list position) so a
+        missing unit reads None instead of a neighbour's data. No cleaner.
+        """
+        spec = _FIELD_MAP.get(canonical_key)
+        if spec is None:
+            return None
+        _, storage_field, storage_scale, _ = spec
+        for unit in self.units:
+            if self.unit_key(unit) != unit_key:
+                continue
+            val = unit.get(storage_field)
+            if val is None:
+                return None
+            try:
+                return round(float(val) * storage_scale, 1)
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def get_value(self, canonical_key: str, default: Any = None) -> Any:
+        raw_value = self._system_value(canonical_key)
         if raw_value is None:
             return default
 

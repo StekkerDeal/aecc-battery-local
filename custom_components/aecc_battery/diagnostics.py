@@ -124,6 +124,7 @@ async def async_get_config_entry_diagnostics(
         "device_serial": coordinator.device_serial,
         "host": coordinator.client.host,
         "port": coordinator.client.port,
+        "unit_count": len(coordinator.units),
     }
 
     poll_seconds: int | None = None

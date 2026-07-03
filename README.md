@@ -30,6 +30,7 @@ Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, A
 - **Full battery control**: direction (Charge/Discharge/Idle), power slider (0-800W, extendable to 2400W), SOC limits
 - **Work mode selector**: Self-Consumption (AI), Custom/Manual
 - **Multi-brand**: select your brand during setup; DeviceInfo shows correct manufacturer and model
+- **Multi-unit**: master/slave stacks get one device per battery with per-unit telemetry, plus whole-system totals
 - **Multi-language**: English, Dutch, German, French
 
 ---
@@ -48,7 +49,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | **Lunergy** | Hub 2400 AC | Fully tested | TCP connection can be flaky; the integration handles reconnects automatically. Per-brand sensor cleaning rejects the known sensor-stuck-at-zero pattern. |
 | **AEG** | Solarcube | Partial | Monitoring works ([#1](https://github.com/StekkerDeal/aecc-battery-local/issues/1)). Battery **power** control has no effect on this firmware (it ignores the control register and uses dedicated power registers instead); needs a register scan from an AEG owner to fix ([#8](https://github.com/StekkerDeal/aecc-battery-local/issues/8)) |
 | **Voltdeer** | SR5000 | Community confirmed | Works out of the box |
-| **AFERIY** | PS240 | Community confirmed | Multi-unit setup confirmed working ([#2](https://github.com/StekkerDeal/aecc-battery-local/issues/2)) |
+| **AFERIY** | PS240 | Community confirmed | Confirmed working ([#2](https://github.com/StekkerDeal/aecc-battery-local/issues/2)) |
 | **AccuMate** | Plug-In Battery | Community confirmed | Works out of the box ([#6](https://github.com/StekkerDeal/aecc-battery-local/issues/6)) |
 | **JET** | GreenARK Pro | Tested | Confirmed working on a loan test unit |
 
@@ -171,6 +172,21 @@ Every control command (direction, power, work mode, SOC limits) is automatically
 | Discharge Limit | Number (slider) | Min SOC before discharge stops (5-50%) |
 | Charge Limit | Number (slider) | Max SOC before charging stops (50-100%) |
 | Work Mode | Select | Self-Consumption (AI), Custom/Manual |
+
+---
+
+## Multi-unit / Master-Slave Setups
+
+Some AECC systems stack multiple batteries in a master/slave configuration. Add the integration **once**, pointing at the **master's IP**: the master reports data for the whole stack, and the slave does not serve the local API at all.
+
+With 2 or more units, the integration creates:
+
+- The main device with **whole-system** sensors (totals as computed by the master itself) and all controls
+- One **child device per battery** ("Battery 1", "Battery 2", ...) with per-unit SOC, charging/discharging power, PV, backup power, and status
+
+Controls stay on the main device only: the AECC protocol has no per-unit control; the master distributes one setpoint across the stack.
+
+Single-unit systems are unaffected (no child devices). If you add or remove a battery from the stack, **reload the integration** to refresh the device list.
 
 ---
 

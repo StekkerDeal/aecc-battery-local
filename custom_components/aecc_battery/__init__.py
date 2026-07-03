@@ -102,6 +102,17 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     await hass.config_entries.async_reload(entry.entry_id)
 
 
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Allow deleting devices that no longer appear in the poll (removed slave units)."""
+    coordinator: AeccBatteryCoordinator | None = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if coordinator is None:
+        return True
+    alive = {coordinator.hub_identifier} | {coordinator.unit_identifier(u) for u in coordinator.units}
+    return not any(identifier in alive for domain, identifier in device_entry.identifiers if domain == DOMAIN)
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
