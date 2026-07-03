@@ -1,4 +1,4 @@
-"""Number platform - Power Slider, Min SOC, Max SOC."""
+"""Number platform - Power Slider, Power Setpoint, Min SOC, Max SOC."""
 
 from __future__ import annotations
 

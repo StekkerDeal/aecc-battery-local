@@ -18,6 +18,7 @@ def mock_client():
     client = AsyncMock()
     client.host = "192.168.1.100"
     client.port = 8080
+    client.consecutive_failures = 0
     client.set_control_parameters = AsyncMock(return_value={"result": "ok"})
     # Readback None so write-verify exits silently.
     client.get_control_parameters = AsyncMock(return_value=None)
@@ -34,6 +35,7 @@ def coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
         model="S2400",
     )
     coord._WRITE_VERIFY_DELAY_SECONDS = 0
+    coord._WRITE_RETRY_DELAY_SECONDS = 0
     return coord
 
 
@@ -48,6 +50,7 @@ def extended_coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordin
         extended_power=True,
     )
     coord._WRITE_VERIFY_DELAY_SECONDS = 0
+    coord._WRITE_RETRY_DELAY_SECONDS = 0
     return coord
 
 

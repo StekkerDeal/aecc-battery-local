@@ -106,6 +106,11 @@ class TCPClientManager:
 
     # ── Backoff ───────────────────────────────────────────────────────────────
 
+    @property
+    def consecutive_failures(self) -> int:
+        """Connection-failure streak (0 = healthy, resets on success)."""
+        return self._consecutive_failures
+
     def _cooldown_for(self, attempt: int) -> float:
         """Return the reconnect cooldown for a 0-based failure attempt."""
         return min(self._base_cooldown * (2**attempt), self._max_cooldown)

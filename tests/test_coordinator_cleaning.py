@@ -21,6 +21,7 @@ def mock_client():
     client = AsyncMock()
     client.host = "192.168.1.100"
     client.port = 8080
+    client.consecutive_failures = 0
     # Default readback returns None so write-verify exits silently unless
     # an individual test explicitly stubs a response.
     client.get_control_parameters = AsyncMock(return_value=None)
@@ -39,6 +40,7 @@ def lunergy_coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordina
         brand_profile=BRAND_PROFILES["Lunergy"],
     )
     coord._WRITE_VERIFY_DELAY_SECONDS = 0
+    coord._WRITE_RETRY_DELAY_SECONDS = 0
     return coord
 
 

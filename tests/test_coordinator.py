@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from unittest.mock import AsyncMock
 
@@ -35,6 +36,7 @@ def mock_client():
     client = AsyncMock()
     client.host = "192.168.1.100"
     client.port = 8080
+    client.consecutive_failures = 0
     # Default the readback to None so write-verify exits silently in SET
     # tests that don't explicitly stub it. Individual tests can override.
     client.get_control_parameters = AsyncMock(return_value=None)
@@ -53,6 +55,7 @@ def coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
     )
     # Skip the post-write asyncio.sleep so SET tests don't each pause 500ms.
     coord._WRITE_VERIFY_DELAY_SECONDS = 0
+    coord._WRITE_RETRY_DELAY_SECONDS = 0
     return coord
 
 
@@ -67,6 +70,7 @@ def aeg_coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
         model="Solarcube AS-BBL09",
     )
     coord._WRITE_VERIFY_DELAY_SECONDS = 0
+    coord._WRITE_RETRY_DELAY_SECONDS = 0
     return coord
 
 
@@ -424,6 +428,69 @@ async def test_set_battery_control_no_response(
     coordinator.client.set_control_parameters.return_value = None
     result = await coordinator.async_set_battery_control("Charge", 500)
     assert result is False
+
+
+# ── Write retry (issue #12) ──────────────────────────────────────────────────
+
+
+async def test_logged_write_retries_unconfirmed(coordinator: AeccBatteryCoordinator) -> None:
+    """An unconfirmed write is re-sent and succeeds on the second attempt."""
+    coordinator.client.set_control_parameters = AsyncMock(side_effect=[None, {"result": "ok"}])
+    result = await coordinator._logged_write({"3023": "15"}, "min_soc(15%)")
+    assert result is True
+    assert coordinator.client.set_control_parameters.call_count == 2
+    entry = coordinator.write_history[-1]
+    assert entry["attempts"] == 2
+    assert entry["response_received"] is True
+    # Verify readback runs once, on the final success only.
+    coordinator.client.get_control_parameters.assert_called_once()
+
+
+async def test_logged_write_gives_up_after_retries(coordinator: AeccBatteryCoordinator) -> None:
+    coordinator.client.set_control_parameters = AsyncMock(return_value=None)
+    result = await coordinator._logged_write({"3023": "15"}, "min_soc(15%)")
+    assert result is False
+    assert coordinator.client.set_control_parameters.call_count == 3  # 1 + 2 retries
+    entry = coordinator.write_history[-1]
+    assert entry["attempts"] == 3
+    assert entry["response_received"] is False
+    coordinator.client.get_control_parameters.assert_not_called()
+
+
+async def test_logged_write_no_retry_on_success(coordinator: AeccBatteryCoordinator) -> None:
+    result = await coordinator._logged_write({"3023": "15"}, "min_soc(15%)")
+    assert result is True
+    assert coordinator.client.set_control_parameters.call_count == 1
+    assert coordinator.write_history[-1]["attempts"] == 1
+
+
+async def test_logged_write_no_retry_during_sustained_outage(coordinator: AeccBatteryCoordinator) -> None:
+    """A high connection-failure streak means outage, not blip: fail fast."""
+    coordinator.client.set_control_parameters = AsyncMock(return_value=None)
+    coordinator.client.consecutive_failures = 3
+    result = await coordinator._logged_write({"3023": "15"}, "min_soc(15%)")
+    assert result is False
+    assert coordinator.client.set_control_parameters.call_count == 1
+    assert coordinator.write_history[-1]["attempts"] == 1
+
+
+async def test_retry_cannot_overwrite_newer_write(coordinator: AeccBatteryCoordinator) -> None:
+    """The write lock is FIFO: a retrying write finishes all its attempts
+    before the next write starts, so a re-sent (stale) payload can never
+    land after a newer command and silently overwrite it."""
+    coordinator._WRITE_RETRY_DELAY_SECONDS = 0.05
+    calls: list[dict] = []
+
+    async def flaky_set(payload):
+        calls.append(dict(payload))
+        return None if len(calls) == 1 else {"result": "ok"}
+
+    coordinator.client.set_control_parameters = AsyncMock(side_effect=flaky_set)
+    old_write = asyncio.ensure_future(coordinator._logged_write({"3003": "old"}, "old"))
+    await asyncio.sleep(0.01)  # old write failed attempt 1 and is sleeping before its retry
+    new_write = asyncio.ensure_future(coordinator._logged_write({"3003": "new"}, "new"))
+    assert await asyncio.gather(old_write, new_write) == [True, True]
+    assert [c["3003"] for c in calls] == ["old", "old", "new"]
 
 
 # ── Work mode ────────────────────────────────────────────────────────────────

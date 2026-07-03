@@ -28,6 +28,7 @@ def mock_tcp_client():
         client = mock_cls.return_value
         client.host = "192.168.1.100"
         client.port = 8080
+        client.consecutive_failures = 0
         client.async_connect = AsyncMock()
         client.async_disconnect = AsyncMock()
         client.get_energy_parameters = AsyncMock(

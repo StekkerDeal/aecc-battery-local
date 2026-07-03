@@ -128,6 +128,11 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # the exact register payloads sent and the post-write verify
         # results from the device.
         self._write_history: deque[dict[str, Any]] = deque(maxlen=20)
+        # Serializes whole write sequences (attempt + retries). asyncio locks
+        # wake waiters FIFO, so writes complete in issue order and a re-sent
+        # (stale) payload can never land after a newer command - the client's
+        # io_lock only orders individual sends, not multi-attempt sequences.
+        self._write_lock = asyncio.Lock()
         super().__init__(
             hass,
             _LOGGER,
@@ -405,6 +410,20 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # and Sunpura without noticeably slowing user-facing UI updates.
     _WRITE_VERIFY_DELAY_SECONDS: float = 0.5
 
+    # Re-sends after an unconfirmed write (issue #12). These dataloggers
+    # periodically reset their single TCP connection; a write landing in a
+    # reset window comes back unconfirmed (~2% of writes measured on a JET
+    # bench unit). Control writes are idempotent, so re-sending is safe.
+    # The client has already waited its reconnect cooldown before returning
+    # None on a connection error; the extra delay covers the read-timeout
+    # path where the socket is kept.
+    _WRITE_RETRY_ATTEMPTS: int = 2
+    _WRITE_RETRY_DELAY_SECONDS: float = 1.0
+    # No retries once the connection-failure streak says sustained outage
+    # rather than a reset blip: each extra attempt would burn the escalating
+    # reconnect cooldown while newer writes queue behind the write lock.
+    _WRITE_RETRY_OUTAGE_STREAK: int = 3
+
     async def _verify_write(
         self,
         expected: dict[str, str],
@@ -505,13 +524,40 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "operation": operation,
             "payload": dict(payload),
             "response_received": False,
+            "attempts": 0,
             "verify_result": None,
         }
         self._write_history.append(entry)
-        resp = await self.client.set_control_parameters(payload)
+        resp: dict[str, Any] | None = None
+        async with self._write_lock:
+            for attempt in range(1 + self._WRITE_RETRY_ATTEMPTS):
+                entry["attempts"] = attempt + 1
+                resp = await self.client.set_control_parameters(payload)
+                if resp is not None:
+                    break
+                if attempt >= self._WRITE_RETRY_ATTEMPTS:
+                    break
+                if self.client.consecutive_failures >= self._WRITE_RETRY_OUTAGE_STREAK:
+                    _LOGGER.debug(
+                        "SET %s unconfirmed with device unreachable (failure streak %d) - not retrying",
+                        operation,
+                        self.client.consecutive_failures,
+                    )
+                    break
+                _LOGGER.info(
+                    "SET %s unconfirmed - re-sending (retry %d of %d)",
+                    operation,
+                    attempt + 1,
+                    self._WRITE_RETRY_ATTEMPTS,
+                )
+                await asyncio.sleep(self._WRITE_RETRY_DELAY_SECONDS)
         entry["response_received"] = resp is not None
         if resp is None:
-            _LOGGER.warning("SET %s failed - no response from battery", operation)
+            _LOGGER.warning(
+                "SET %s failed - no response from battery after %d attempt(s)",
+                operation,
+                entry["attempts"],
+            )
             return False
         _LOGGER.debug("SET %s response: %s", operation, resp)
         entry["verify_result"] = await self._verify_write(payload, operation)
@@ -607,7 +653,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return success
 
     async def async_set_power_setpoint(self, watts: float) -> bool:
-        power_w = int(watts)
+        power_w = int(round(watts))
         if power_w == 0:
             return await self.async_set_battery_control("Idle", 0)
         elif power_w > 0:

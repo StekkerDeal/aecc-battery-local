@@ -51,6 +51,11 @@ class AeccTcpClient:
         await self._manager.close()
         self._connected = False
 
+    @property
+    def consecutive_failures(self) -> int:
+        """Connection-failure streak from the shared manager (0 = healthy)."""
+        return self._manager.consecutive_failures
+
     # ── Public API ─────────────────────────────────────────────────────────
 
     async def get_energy_parameters(self) -> dict[str, Any] | None:
