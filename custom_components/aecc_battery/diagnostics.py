@@ -151,6 +151,10 @@ async def async_get_config_entry_diagnostics(
         "initial_work_mode": coordinator.initial_work_mode,
         "current_work_mode": coordinator.current_work_mode,
         "initial_power": coordinator.initial_power,
+        "suspect_streak": coordinator._suspect_streak,
+        "suspect_frames_total": coordinator._suspect_frames_total,
+        "last_suspect_reason": coordinator._last_suspect_reason,
+        "last_suspect_at": coordinator._last_suspect_at,
     }
 
     cleaner_state_section = {

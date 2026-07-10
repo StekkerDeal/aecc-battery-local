@@ -92,6 +92,12 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._consecutive_failures: int = 0
         self._last_good_data: dict[str, Any] | None = None
         self._failure_tolerance: int = 5
+        # Frame-guard state (issue #15): consecutive suspect frames held back,
+        # plus counters surfaced through diagnostics.
+        self._suspect_streak: int = 0
+        self._suspect_frames_total: int = 0
+        self._last_suspect_reason: str | None = None
+        self._last_suspect_at: str | None = None
         self.device_serial: str | None = None
         self.firmware_version: str | None = None
         self.device_model: str | None = None
@@ -145,6 +151,57 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_setup(self) -> None:
         await self.client.async_connect()
 
+    # Consecutive suspect frames (unit missing / SOC collapsed) held back
+    # before a changed frame is accepted as the new reality, so a genuinely
+    # removed unit still becomes visible within ~3 polls.
+    _SUSPECT_FRAME_TOLERANCE: int = 3
+    # A unit SOC reading of 0 is only impossible when the last good SOC was
+    # at or above this; a pack at 4% draining to 0 is legitimate.
+    _SOC_COLLAPSE_FLOOR: int = 5
+
+    @staticmethod
+    def _unit_label(unit: dict[str, Any]) -> str:
+        """Non-sensitive unit identifier for logs and diagnostics.
+
+        The stable unit key is the serial number, which must not leak into
+        the free-text suspect reason (diagnostics redaction is key-based
+        and cannot scrub values). DevAddr first, truncated serial fallback.
+        """
+        devaddr = unit.get("DevAddr")
+        if devaddr is not None:
+            return f"DevAddr {devaddr}"
+        return f"SN ending {AeccBatteryCoordinator.unit_key(unit)[-4:]}"
+
+    def _frame_suspect_reason(self, raw: dict[str, Any]) -> str | None:
+        """Reason this frame is provably faulty vs the last good one, or None.
+
+        Faulty dataloggers serve occasional partial frames (issue #15: a unit
+        briefly absent from Storage_list, or present with SOC collapsed to 0).
+        Unit presence and SOC are the only safe validity anchors - a power
+        value of 0 is legitimate everywhere.
+        """
+        if self._last_good_data is None:
+            return None
+        last_units = {self.unit_key(u): u for u in self._last_good_data.get("Storage_list") or []}
+        if not last_units:
+            return None
+        new_units = {self.unit_key(u): u for u in raw.get("Storage_list") or []}
+        missing = [self._unit_label(u) for key, u in last_units.items() if key not in new_units]
+        if missing:
+            return f"unit(s) missing from Storage_list: {', '.join(missing)}"
+        for key, unit in new_units.items():
+            last_unit = last_units.get(key)
+            if last_unit is None:
+                continue
+            try:
+                new_soc = float(unit.get("BatterySoc"))
+                last_soc = float(last_unit.get("BatterySoc"))
+            except (TypeError, ValueError):
+                continue
+            if new_soc == 0 and last_soc >= self._SOC_COLLAPSE_FLOOR:
+                return f"unit {self._unit_label(unit)} SOC collapsed from {last_soc:g} to 0"
+        return None
+
     async def _async_update_data(self) -> dict[str, Any]:
         raw = await self.client.get_energy_parameters()
 
@@ -172,6 +229,28 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
         self._consecutive_failures = 0
+
+        suspect_reason = self._frame_suspect_reason(raw)
+        if suspect_reason is not None:
+            if self._suspect_streak < self._SUSPECT_FRAME_TOLERANCE:
+                self._suspect_streak += 1
+                self._suspect_frames_total += 1
+                self._last_suspect_reason = suspect_reason
+                self._last_suspect_at = datetime.now(UTC).isoformat()
+                _LOGGER.info(
+                    "Rejecting suspect poll frame (%s) - keeping last good data (%d/%d)",
+                    suspect_reason,
+                    self._suspect_streak,
+                    self._SUSPECT_FRAME_TOLERANCE,
+                )
+                return self._last_good_data
+            _LOGGER.info(
+                "Accepting changed poll frame (%s) after %d consecutive suspect polls",
+                suspect_reason,
+                self._suspect_streak,
+            )
+        self._suspect_streak = 0
+
         self._last_good_data = raw
         await self._async_maybe_refresh_rssi()
         return raw

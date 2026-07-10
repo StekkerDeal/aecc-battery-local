@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import time
 from unittest.mock import AsyncMock
 
@@ -28,6 +29,7 @@ from custom_components.aecc_battery.const import (
     WORK_MODES,
 )
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
+from tests.test_multiunit import ISSUE9_POLL, SN2
 
 
 @pytest.fixture
@@ -662,6 +664,178 @@ async def test_update_data_no_prior_data(
 
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
+
+
+# ── Frame guard (issue #15) ──────────────────────────────────────────────────
+
+
+def _two_unit_frame() -> dict:
+    return copy.deepcopy(ISSUE9_POLL)
+
+
+async def _prime_baseline(coordinator: AeccBatteryCoordinator, frame: dict) -> None:
+    coordinator.client.get_energy_parameters.return_value = frame
+    await coordinator._async_update_data()
+
+
+async def test_frame_guard_missing_unit_rejected(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """A frame missing a previously seen unit returns the last good frame."""
+    await _prime_baseline(coordinator, _two_unit_frame())
+
+    partial = _two_unit_frame()
+    partial["Storage_list"] = [u for u in partial["Storage_list"] if u["StorageSN"] != SN2]
+    coordinator._consecutive_failures = 2
+    coordinator.client.get_energy_parameters.return_value = partial
+
+    data = await coordinator._async_update_data()
+    assert len(data["Storage_list"]) == 2
+    assert coordinator._suspect_streak == 1
+    assert coordinator._suspect_frames_total == 1
+    assert "DevAddr 2" in coordinator._last_suspect_reason
+    # The serial must never leak into the free-text reason: diagnostics
+    # redaction is key-based and the reason is shared on GitHub verbatim.
+    assert SN2 not in coordinator._last_suspect_reason
+    assert coordinator._last_suspect_at is not None
+    # The device answered, so the connection-level counter still resets.
+    assert coordinator._consecutive_failures == 0
+
+
+async def test_frame_guard_accepts_changed_frame_after_tolerance(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """A persistently smaller frame is accepted after the suspect tolerance."""
+    await _prime_baseline(coordinator, _two_unit_frame())
+
+    partial = _two_unit_frame()
+    partial["Storage_list"] = [u for u in partial["Storage_list"] if u["StorageSN"] != SN2]
+    coordinator.client.get_energy_parameters.return_value = partial
+
+    for i in range(3):
+        data = await coordinator._async_update_data()
+        assert len(data["Storage_list"]) == 2
+        assert coordinator._suspect_streak == i + 1
+
+    data = await coordinator._async_update_data()
+    assert len(data["Storage_list"]) == 1
+    assert coordinator._suspect_streak == 0
+    assert coordinator._last_good_data == partial
+
+
+async def test_frame_guard_soc_collapse_rejected(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """A unit SOC collapsing from 48 to 0 in one poll rejects the frame."""
+    await _prime_baseline(coordinator, _two_unit_frame())
+
+    glitched = _two_unit_frame()
+    glitched["Storage_list"][1]["BatterySoc"] = 0
+    coordinator.client.get_energy_parameters.return_value = glitched
+
+    data = await coordinator._async_update_data()
+    assert data["Storage_list"][1]["BatterySoc"] == 48
+    assert coordinator._suspect_streak == 1
+    assert "SOC collapsed" in coordinator._last_suspect_reason
+    assert SN2 not in coordinator._last_suspect_reason
+
+
+async def test_frame_guard_soc_zero_below_floor_accepted(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """SOC 0 after a last good SOC below the floor is a legitimate drain."""
+    nearly_empty = _two_unit_frame()
+    for unit in nearly_empty["Storage_list"]:
+        unit["BatterySoc"] = 3
+    await _prime_baseline(coordinator, nearly_empty)
+
+    empty = _two_unit_frame()
+    for unit in empty["Storage_list"]:
+        unit["BatterySoc"] = 0
+    coordinator.client.get_energy_parameters.return_value = empty
+
+    data = await coordinator._async_update_data()
+    assert data["Storage_list"][0]["BatterySoc"] == 0
+    assert coordinator._suspect_streak == 0
+
+
+async def test_frame_guard_clean_frame_resets_streak(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """A good frame between suspect ones resets the streak, not the total."""
+    await _prime_baseline(coordinator, _two_unit_frame())
+
+    partial = _two_unit_frame()
+    partial["Storage_list"] = [u for u in partial["Storage_list"] if u["StorageSN"] != SN2]
+
+    coordinator.client.get_energy_parameters.return_value = partial
+    await coordinator._async_update_data()
+    assert coordinator._suspect_streak == 1
+
+    coordinator.client.get_energy_parameters.return_value = _two_unit_frame()
+    await coordinator._async_update_data()
+    assert coordinator._suspect_streak == 0
+
+    coordinator.client.get_energy_parameters.return_value = partial
+    await coordinator._async_update_data()
+    assert coordinator._suspect_streak == 1
+    assert coordinator._suspect_frames_total == 2
+
+
+async def test_frame_guard_new_unit_accepted(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """A frame with an extra unit is accepted immediately."""
+    single = _two_unit_frame()
+    single["Storage_list"] = [u for u in single["Storage_list"] if u["StorageSN"] != SN2]
+    await _prime_baseline(coordinator, single)
+
+    coordinator.client.get_energy_parameters.return_value = _two_unit_frame()
+    data = await coordinator._async_update_data()
+    assert len(data["Storage_list"]) == 2
+    assert coordinator._suspect_streak == 0
+
+
+async def test_frame_guard_reorder_accepted(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """Reordered Storage_list entries are not suspect (keys match)."""
+    await _prime_baseline(coordinator, _two_unit_frame())
+
+    reordered = _two_unit_frame()
+    reordered["Storage_list"].reverse()
+    coordinator.client.get_energy_parameters.return_value = reordered
+
+    data = await coordinator._async_update_data()
+    assert data["Storage_list"][0]["StorageSN"] == SN2
+    assert coordinator._suspect_streak == 0
+
+
+async def test_frame_guard_first_frame_accepted(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """The first frame ever is accepted, there is no baseline to compare."""
+    frame = _two_unit_frame()
+    frame["Storage_list"][0]["BatterySoc"] = 0
+    coordinator.client.get_energy_parameters.return_value = frame
+
+    data = await coordinator._async_update_data()
+    assert data == frame
+    assert coordinator._suspect_streak == 0
+
+
+async def test_frame_guard_summary_only_never_suspect(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """Brands without Storage_list have no units to compare and never trip."""
+    await _prime_baseline(coordinator, {"SSumInfoList": {"AverageBatteryAverageSOC": "75"}})
+
+    updated = {"SSumInfoList": {"AverageBatteryAverageSOC": "0"}}
+    coordinator.client.get_energy_parameters.return_value = updated
+
+    data = await coordinator._async_update_data()
+    assert data == updated
+    assert coordinator._suspect_streak == 0
 
 
 # ── Initial state reading ────────────────────────────────────────────────────
