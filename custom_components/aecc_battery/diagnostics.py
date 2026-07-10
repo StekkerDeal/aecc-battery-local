@@ -132,7 +132,8 @@ async def async_get_config_entry_diagnostics(
         poll_seconds = int(coordinator.update_interval.total_seconds())
 
     config_section = {
-        "extended_power": coordinator.extended_power,
+        "max_charge_power": coordinator.max_charge_power,
+        "max_discharge_power": coordinator.max_discharge_power,
         "max_register_power": coordinator.max_register_power,
         "brand_profile": dict(coordinator.brand_profile),
         "poll_interval_seconds": poll_seconds,

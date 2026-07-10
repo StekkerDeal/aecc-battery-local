@@ -6,7 +6,11 @@ DOMAIN = "aecc_battery"
 CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_NAME = "name"
+# Legacy symmetric 800/2400 toggle; read for backward compatibility, never
+# written since v1.5.2 (superseded by the per-direction limits below).
 CONF_EXTENDED_POWER = "extended_power"
+CONF_MAX_CHARGE_POWER = "max_charge_power"
+CONF_MAX_DISCHARGE_POWER = "max_discharge_power"
 CONF_MANUFACTURER = "manufacturer"
 CONF_MODEL = "model"
 

@@ -39,10 +39,12 @@
           "name": "Device Name",
           "manufacturer": "Battery Brand",
           "model": "Model (optional)",
-          "extended_power": "Extended power range (up to 2400W)"
+          "max_charge_power": "Max charge power (W)",
+          "max_discharge_power": "Max discharge power (W)"
         },
         "data_description": {
-          "extended_power": "By default, local control is limited to 800W. Enable this to allow power up to 2400W by writing register 3039. This is the same setting the AECC app uses when you configure power above 800W."
+          "max_charge_power": "Highest charging power the integration will command (100-2400W, default 800W). Charging draws from the grid, so feed-in limits do not apply.",
+          "max_discharge_power": "Highest discharging power the integration will command (100-2400W, default 800W). For output above 800W the device's own 'On Grid Output' setting in the vendor app must also be raised."
         }
       }
     },

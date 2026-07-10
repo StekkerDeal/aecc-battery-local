@@ -27,7 +27,7 @@ Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, A
 - **Hybrid availability**: entities hold their last known value through brief sensor blips, then transition to `unavailable` after a sustained outage so automations and dashboards see an honest signal.
 - **Write-back verification**: every control command is re-read after writing; mismatches are logged so silent firmware drops become visible.
 - **Energy Dashboard ready**: accumulated kWh sensors (`total_increasing`) for the HA Energy Dashboard
-- **Full battery control**: direction (Charge/Discharge/Idle), power slider (0-800W, extendable to 2400W), SOC limits
+- **Full battery control**: direction (Charge/Discharge/Idle), signed power setpoint, per-direction power limits (up to 2400W), SOC limits
 - **Work mode selector**: Self-Consumption (AI), Custom/Manual
 - **Multi-brand**: select your brand during setup; DeviceInfo shows correct manufacturer and model
 - **Multi-unit**: master/slave stacks get one device per battery with per-unit telemetry, plus whole-system totals
@@ -100,21 +100,22 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 
 You can update all settings at any time via the integration's **Configure** button.
 
-### Extended Power Range
+### Power Limits
 
-By default, the AECC platform limits power to **800W** (both locally and in the app). The battery hardware supports up to 2400W, but two settings must be changed to unlock higher power:
+By default, the integration limits both charging and discharging to **800W**. The hardware supports up to 2400W, and since charging and discharging have different constraints (feed-in rules and house wiring apply to *output* only), the limits are configured **per direction** via the integration's **Configure** button:
 
-**Step 1: AECC App (one-time, per device):**
+- **Max charge power** (100-2400W): the highest charging power the integration will command. Charging draws from the grid, so no feed-in limits apply.
+- **Max discharge power** (100-2400W): the highest discharging power the integration will command.
 
-The AECC app has an "On Grid Output" setting (under Operating Mode Settings) that caps the maximum power the inverter will deliver. The factory default is **800W**. This setting is **not accessible via local TCP** and must be configured in the AECC app. Set it to your desired maximum (e.g. 2400W).
+All control paths enforce these limits: the Power Setpoint entity gets matching bounds (e.g. -800 to +2400 for an 800W discharge / 2400W charge configuration), and out-of-range slider or automation commands are clamped with a warning in the log.
 
-**Step 2: Integration:**
+**Two caps govern output.** The integration's discharge limit bounds what gets *commanded* (plus register 3039, the device's local power cap, which the integration raises automatically when either limit exceeds 800W). Separately, the AECC app has an "On Grid Output" setting (under Operating Mode Settings, factory default **800W**) that caps what the inverter will actually *deliver*. That setting is **not accessible via local TCP**; for discharging above 800W it must be raised in the app once, per device.
 
-1. Go to the integration's **Configure** button
-2. Enable **Extended power range (up to 2400W)**
-3. The power slider increases from 0-800W to 0-2400W
+> **Tip for limited circuits:** to charge fast while keeping discharge safe, set Max charge power to 2400W, Max discharge power to 800W, and leave "On Grid Output" at 800W in the app. The integration then never commands more than 800W output, and the device itself enforces the same cap at the hardware level.
 
-> **Disclaimer:** Only enable extended power (above 800W) when the battery is connected to its own dedicated circuit.
+> **Disclaimer:** Only raise the discharge limit above 800W when the battery is connected to its own dedicated circuit.
+
+Configurations from before v1.5.2 migrate automatically: entries with the old "Extended power range" switch enabled get 2400W in both directions, all others keep 800W.
 
 ---
 
@@ -168,8 +169,8 @@ Every control command (direction, power, work mode, SOC limits) is automatically
 | Entity | Type | Description |
 |---|---|---|
 | Battery Direction | Select | Charge, Discharge, or Idle |
-| Battery Power | Number (slider) | Power target: 0-800W (or 0-2400W extended) |
-| Power Setpoint | Number (box) | Signed one-write control: positive = charge, negative = discharge, 0 = idle. Made for external energy managers |
+| Battery Power | Number (slider) | Power target magnitude, up to the higher of the two power limits |
+| Power Setpoint | Number (box) | Signed one-write control: positive = charge, negative = discharge, 0 = idle. Bounds follow the per-direction power limits. Made for external energy managers |
 | Discharge Limit | Number (slider) | Min SOC before discharge stops (5-50%) |
 | Charge Limit | Number (slider) | Max SOC before charging stops (50-100%) |
 | Work Mode | Select | Self-Consumption (AI), Custom/Manual |
@@ -209,7 +210,7 @@ Energy sensors use Riemann sum integration (the AECC TCP protocol does not expos
 
 Two entities work together:
 - **Battery Direction** (select): Charge, Discharge, or Idle
-- **Battery Power** (slider): 0-800W (or 0-2400W with extended power)
+- **Battery Power** (slider): 0 up to the higher of the two configured power limits
 
 Selecting a direction (or moving the Power slider) automatically switches to Custom mode and writes the schedule register. The Work Mode selector reflects this and shows Custom.
 
@@ -273,7 +274,7 @@ automation:
 The kill-switch matters: without it, a crashed optimizer leaves the last setpoint running indefinitely.
 
 Configuration tips:
-- Set EMHASS's battery bounds to match this integration: `battery_discharge_power_max` / `battery_charge_power_max` = your power limit (800 W, or 2400 W with extended power), and keep `battery_minimum_state_of_charge` / `battery_maximum_state_of_charge` in sync with the **Discharge Limit** / **Charge Limit** entities.
+- Set EMHASS's battery bounds to match this integration: `battery_discharge_power_max` / `battery_charge_power_max` = your **Max discharge power** / **Max charge power** settings, and keep `battery_minimum_state_of_charge` / `battery_maximum_state_of_charge` in sync with the **Discharge Limit** / **Charge Limit** entities.
 - The device's own protection still applies: the battery stops at its SOC limits regardless of the commanded setpoint.
 
 ---

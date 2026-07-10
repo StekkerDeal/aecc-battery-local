@@ -18,7 +18,6 @@ from .const import (
     BRAND_AEG,
     DEFAULT_BRAND_PROFILE,
     DOMAIN,
-    MAX_BATTERY_POWER_W,
     MAX_REGISTER_POWER_DEFAULT,
     MIN_POLL_INTERVAL,
     MODE_CUSTOM,
@@ -82,7 +81,8 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         poll_interval: int = POLL_INTERVAL,
         manufacturer: str = "AECC",
         model: str = "",
-        extended_power: bool = False,
+        max_charge_power: int = MAX_REGISTER_POWER_DEFAULT,
+        max_discharge_power: int = MAX_REGISTER_POWER_DEFAULT,
         brand_profile: dict[str, Any] | None = None,
     ) -> None:
         self.client = client
@@ -103,8 +103,8 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._commanded_direction: str = "Idle"
         self._commanded_min_soc: int = 10
         self._commanded_max_soc: int = 100
-        self.extended_power: bool = extended_power
-        self.max_register_power: int = MAX_BATTERY_POWER_W if extended_power else MAX_REGISTER_POWER_DEFAULT
+        self.max_charge_power: int = max_charge_power
+        self.max_discharge_power: int = max_discharge_power
         self.initial_min_soc: int | None = None
         self.initial_max_soc: int | None = None
         self.initial_work_mode: str | None = None
@@ -223,6 +223,11 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @current_work_mode.setter
     def current_work_mode(self, value: str | None) -> None:
         self._current_work_mode = value
+
+    @property
+    def max_register_power(self) -> int:
+        """Symmetric bound: the larger of the two per-direction limits."""
+        return max(self.max_charge_power, self.max_discharge_power)
 
     @property
     def hub_identifier(self) -> str:
@@ -605,6 +610,18 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return 0, "Idle"
 
     async def async_set_battery_control(self, direction: str, power_w: int) -> bool:
+        limit = self.max_charge_power if direction == "Charge" else self.max_discharge_power
+        if direction != "Idle" and power_w > limit:
+            _LOGGER.warning(
+                "%s power %d W exceeds the configured %d W limit - clamping. "
+                "Raise 'Max %s power' in the integration options to allow more.",
+                direction,
+                power_w,
+                limit,
+                direction.lower(),
+            )
+            power_w = limit
+
         has_storage = bool(self.data and self.data.get("Storage_list"))
         field7 = 5 if has_storage else 4
 
@@ -625,16 +642,13 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             REG_CONTROL_TIME1: slot1,
         }
 
-        if self.extended_power:
-            payload[REG_MAX_FEED_POWER] = str(MAX_BATTERY_POWER_W)
-
-        if power_w > MAX_REGISTER_POWER_DEFAULT and not self.extended_power:
-            _LOGGER.warning(
-                "Power %d W exceeds default 800 W limit. "
-                "Enable 'Extended power range' in integration options to allow up to %d W.",
-                power_w,
-                MAX_BATTERY_POWER_W,
-            )
+        # Register 3039 lifts the device's local power cap. Written with the
+        # larger of the two limits: it may gate charging as well as feeding,
+        # and raising it pushes no power by itself - the per-direction clamp
+        # above bounds what we command, and the app's "On Grid Output"
+        # setting remains the device-side output cap.
+        if self.max_register_power > MAX_REGISTER_POWER_DEFAULT:
+            payload[REG_MAX_FEED_POWER] = str(self.max_register_power)
 
         _LOGGER.info(
             "SET battery_control direction=%s power=%d W -> 3003=%r",

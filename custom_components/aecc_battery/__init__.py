@@ -15,12 +15,16 @@ from .const import (
     CONF_EXTENDED_POWER,
     CONF_HOST,
     CONF_MANUFACTURER,
+    CONF_MAX_CHARGE_POWER,
+    CONF_MAX_DISCHARGE_POWER,
     CONF_MODEL,
     CONF_NAME,
     CONF_PORT,
     DEFAULT_BRAND_PROFILE,
     DEFAULT_TIMEOUT,
     DOMAIN,
+    MAX_BATTERY_POWER_W,
+    MAX_REGISTER_POWER_DEFAULT,
 )
 from .coordinator import AeccBatteryCoordinator
 from .tcp_client import AeccTcpClient
@@ -29,6 +33,20 @@ from .tcp_manager import TCPClientManager
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SELECT]
+
+
+def resolve_power_limits(options: dict) -> tuple[int, int]:
+    """Effective (max_charge_power, max_discharge_power) for a config entry.
+
+    The per-direction options win; entries saved before v1.5.2 only carry the
+    legacy symmetric extended_power boolean, which maps to 2400/2400 when true
+    and 800/800 otherwise. Resolved at setup instead of migrating the entry,
+    so a rollback to <=1.5.1 keeps working.
+    """
+    legacy = MAX_BATTERY_POWER_W if options.get(CONF_EXTENDED_POWER) else MAX_REGISTER_POWER_DEFAULT
+    charge = options.get(CONF_MAX_CHARGE_POWER, legacy)
+    discharge = options.get(CONF_MAX_DISCHARGE_POWER, legacy)
+    return int(charge), int(discharge)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -44,7 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except (TimeoutError, OSError, ConnectionError) as exc:
         raise ConfigEntryNotReady(f"Cannot connect to {host}:{port} - {exc}") from exc
 
-    extended_power = entry.options.get(CONF_EXTENDED_POWER, False)
+    max_charge_power, max_discharge_power = resolve_power_limits(entry.options)
     brand_profile = BRAND_PROFILES.get(manufacturer, DEFAULT_BRAND_PROFILE)
     coordinator = AeccBatteryCoordinator(
         hass,
@@ -52,7 +70,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         name,
         manufacturer=manufacturer,
         model=model,
-        extended_power=extended_power,
+        max_charge_power=max_charge_power,
+        max_discharge_power=max_discharge_power,
         brand_profile=brand_profile,
     )
     await coordinator.async_config_entry_first_refresh()

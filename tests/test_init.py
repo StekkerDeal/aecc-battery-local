@@ -6,8 +6,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.aecc_battery import _migrate_device_identifier
-from custom_components.aecc_battery.const import DOMAIN
+from custom_components.aecc_battery import _migrate_device_identifier, resolve_power_limits
+from custom_components.aecc_battery.const import (
+    CONF_EXTENDED_POWER,
+    CONF_MAX_CHARGE_POWER,
+    CONF_MAX_DISCHARGE_POWER,
+    DOMAIN,
+)
 
 _HOST = "192.168.1.50"
 _PORT = 8080
@@ -19,6 +24,28 @@ def _entry(hass: HomeAssistant) -> MockConfigEntry:
     entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=_LEGACY)
     entry.add_to_hass(hass)
     return entry
+
+
+# ── Power limit resolution (per-direction options + legacy extended_power) ────
+
+
+def test_power_limits_default() -> None:
+    assert resolve_power_limits({}) == (800, 800)
+
+
+def test_power_limits_legacy_extended_maps_to_2400() -> None:
+    """Pre-1.5.2 entries with the extended boolean keep 2400W both ways."""
+    assert resolve_power_limits({CONF_EXTENDED_POWER: True}) == (2400, 2400)
+    assert resolve_power_limits({CONF_EXTENDED_POWER: False}) == (800, 800)
+
+
+def test_power_limits_new_keys_win_over_legacy() -> None:
+    options = {
+        CONF_EXTENDED_POWER: True,
+        CONF_MAX_CHARGE_POWER: 2400,
+        CONF_MAX_DISCHARGE_POWER: 800,
+    }
+    assert resolve_power_limits(options) == (2400, 800)
 
 
 async def test_migration_renames_legacy_device(hass: HomeAssistant) -> None:

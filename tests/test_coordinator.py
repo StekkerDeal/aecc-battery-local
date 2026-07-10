@@ -306,19 +306,39 @@ def test_commanded_direction_property(coordinator: AeccBatteryCoordinator) -> No
     assert coordinator.commanded_direction == "Charge"
 
 
-# ── Extended power ───────────────────────────────────────────────────────────
+# ── Power limits ─────────────────────────────────────────────────────────────
 
 
 def test_max_power_default(hass: HomeAssistant, mock_client) -> None:
-    """Test default max power is 800W."""
+    """Test default limits are 800W in both directions."""
     coord = AeccBatteryCoordinator(hass, mock_client, "Test")
+    assert coord.max_charge_power == MAX_REGISTER_POWER_DEFAULT
+    assert coord.max_discharge_power == MAX_REGISTER_POWER_DEFAULT
     assert coord.max_register_power == MAX_REGISTER_POWER_DEFAULT
 
 
-def test_max_power_extended(hass: HomeAssistant, mock_client) -> None:
-    """Test extended max power is 2400W."""
-    coord = AeccBatteryCoordinator(hass, mock_client, "Test", extended_power=True)
+def test_max_register_power_is_larger_limit(hass: HomeAssistant, mock_client) -> None:
+    coord = AeccBatteryCoordinator(hass, mock_client, "Test", max_charge_power=2400, max_discharge_power=800)
     assert coord.max_register_power == MAX_BATTERY_POWER_W
+
+
+async def test_charge_clamped_to_charge_limit(hass: HomeAssistant, mock_client) -> None:
+    """A command above the direction's limit is clamped, not rejected."""
+    coord = AeccBatteryCoordinator(hass, mock_client, "Test", max_charge_power=2400, max_discharge_power=800)
+    coord._WRITE_VERIFY_DELAY_SECONDS = 0
+    coord._WRITE_RETRY_DELAY_SECONDS = 0
+    coord.data = {"SSumInfoList": {}}
+    mock_client.set_control_parameters.return_value = {"result": "ok"}
+
+    assert await coord.async_set_battery_control("Discharge", 900) is True
+    slot = mock_client.set_control_parameters.call_args[0][0][REG_CONTROL_TIME1]
+    assert int(slot.split(",")[3]) == 800  # clamped to the discharge limit
+    assert coord.commanded_power == 800
+
+    assert await coord.async_set_battery_control("Charge", 2400) is True
+    slot = mock_client.set_control_parameters.call_args[0][0][REG_CONTROL_TIME1]
+    assert int(slot.split(",")[3]) == -2400  # charge limit allows the full range
+    assert coord.commanded_power == 2400
 
 
 # ── Battery control ──────────────────────────────────────────────────────────
@@ -426,9 +446,11 @@ async def test_aeg_slot_round_trips_through_reader(
     assert aeg_coordinator.commanded_direction == "Charge"
 
 
-async def test_set_battery_control_extended_writes_max_feed(hass: HomeAssistant, mock_client) -> None:
-    """Test extended power mode writes REG_MAX_FEED_POWER."""
-    coord = AeccBatteryCoordinator(hass, mock_client, "Test", extended_power=True)
+async def test_raised_limit_writes_max_feed(hass: HomeAssistant, mock_client) -> None:
+    """REG_MAX_FEED_POWER carries the larger limit when either exceeds 800W."""
+    coord = AeccBatteryCoordinator(hass, mock_client, "Test", max_charge_power=2400, max_discharge_power=800)
+    coord._WRITE_VERIFY_DELAY_SECONDS = 0
+    coord._WRITE_RETRY_DELAY_SECONDS = 0
     coord.data = {"SSumInfoList": {}}
     mock_client.set_control_parameters.return_value = {"result": "ok"}
     await coord.async_set_battery_control("Charge", 2000)
@@ -436,6 +458,13 @@ async def test_set_battery_control_extended_writes_max_feed(hass: HomeAssistant,
     payload = mock_client.set_control_parameters.call_args[0][0]
     assert REG_MAX_FEED_POWER in payload
     assert payload[REG_MAX_FEED_POWER] == str(MAX_BATTERY_POWER_W)
+
+
+async def test_default_limits_do_not_write_max_feed(coordinator: AeccBatteryCoordinator) -> None:
+    coordinator.data = {"SSumInfoList": {}}
+    await coordinator.async_set_battery_control("Charge", 500)
+    payload = coordinator.client.set_control_parameters.call_args[0][0]
+    assert REG_MAX_FEED_POWER not in payload
 
 
 async def test_set_battery_control_no_response(

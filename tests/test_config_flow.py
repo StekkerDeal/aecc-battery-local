@@ -10,6 +10,8 @@ from custom_components.aecc_battery.const import (
     CONF_EXTENDED_POWER,
     CONF_HOST,
     CONF_MANUFACTURER,
+    CONF_MAX_CHARGE_POWER,
+    CONF_MAX_DISCHARGE_POWER,
     CONF_MODEL,
     CONF_NAME,
     CONF_PORT,
@@ -92,11 +94,12 @@ async def test_user_flow_default_manufacturer(hass: HomeAssistant) -> None:
 
 async def test_options_flow(hass: HomeAssistant) -> None:
     """Test the options flow updates data and options."""
-    # Create initial entry
+    # Create initial entry, carrying a pre-1.5.2 legacy option
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     result = await hass.config_entries.flow.async_configure(result["flow_id"], MOCK_USER_INPUT)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     entry = result["result"]
+    hass.config_entries.async_update_entry(entry, options={CONF_EXTENDED_POWER: True})
 
     # Open options flow
     result = await hass.config_entries.options.async_init(entry.entry_id)
@@ -112,7 +115,8 @@ async def test_options_flow(hass: HomeAssistant) -> None:
             CONF_NAME: "Updated Battery",
             CONF_MANUFACTURER: "Sunpura",
             CONF_MODEL: "S2400",
-            CONF_EXTENDED_POWER: True,
+            CONF_MAX_CHARGE_POWER: 2400,
+            CONF_MAX_DISCHARGE_POWER: 800,
         },
     )
 
@@ -124,4 +128,8 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     assert entry.data[CONF_NAME] == "Updated Battery"
     assert entry.data[CONF_MANUFACTURER] == "Sunpura"
     assert entry.data[CONF_MODEL] == "S2400"
+    assert entry.options[CONF_MAX_CHARGE_POWER] == 2400
+    assert entry.options[CONF_MAX_DISCHARGE_POWER] == 800
+    # The legacy boolean survives the save (options are replaced wholesale by
+    # HA, so the flow must merge it) - a rollback to <=1.5.1 keeps 2400W.
     assert entry.options[CONF_EXTENDED_POWER] is True

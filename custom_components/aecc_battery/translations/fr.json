@@ -39,10 +39,12 @@
           "name": "Nom de l'appareil",
           "manufacturer": "Marque de batterie",
           "model": "Modèle (optionnel)",
-          "extended_power": "Plage de puissance étendue (jusqu'à 2400W)"
+          "max_charge_power": "Puissance de charge max (W)",
+          "max_discharge_power": "Puissance de décharge max (W)"
         },
         "data_description": {
-          "extended_power": "Par défaut, le contrôle local est limité à 800W. Activez cette option pour permettre jusqu'à 2400W via le registre 3039. C'est le même paramètre utilisé par l'application AECC."
+          "max_charge_power": "Puissance de charge maximale commandée par l'intégration (100-2400W, 800W par défaut). La charge provient du réseau, les limites d'injection ne s'appliquent pas.",
+          "max_discharge_power": "Puissance de décharge maximale commandée par l'intégration (100-2400W, 800W par défaut). Au-delà de 800W, le paramètre 'On Grid Output' de l'application du fabricant doit aussi être augmenté."
         }
       }
     },

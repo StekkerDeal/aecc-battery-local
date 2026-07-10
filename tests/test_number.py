@@ -40,14 +40,16 @@ def coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
 
 
 @pytest.fixture
-def extended_coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
+def asymmetric_coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
+    """Charge up to 2400W, discharge capped at 800W (the issue #13 setup)."""
     coord = AeccBatteryCoordinator(
         hass,
         mock_client,
         device_name="Test Battery",
-        manufacturer="Sunpura",
-        model="S2400",
-        extended_power=True,
+        manufacturer="Voltdeer",
+        model="S5000 Pro",
+        max_charge_power=2400,
+        max_discharge_power=800,
     )
     coord._WRITE_VERIFY_DELAY_SECONDS = 0
     coord._WRITE_RETRY_DELAY_SECONDS = 0
@@ -74,10 +76,15 @@ def test_setpoint_range_default(coordinator: AeccBatteryCoordinator, config_entr
     assert entity.unique_id == "test_entry_signed_power_setpoint"
 
 
-def test_setpoint_range_extended(extended_coordinator: AeccBatteryCoordinator, config_entry) -> None:
-    entity = AeccPowerSetpoint(extended_coordinator, config_entry)
-    assert entity.native_min_value == -2400
+def test_setpoint_range_asymmetric(asymmetric_coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    """Bounds follow the per-direction limits: HA rejects a -900 discharge."""
+    entity = AeccPowerSetpoint(asymmetric_coordinator, config_entry)
+    assert entity.native_min_value == -800
     assert entity.native_max_value == 2400
+
+
+def test_slider_max_is_larger_limit(asymmetric_coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    assert AeccPowerSlider(asymmetric_coordinator, config_entry).native_max_value == 2400
 
 
 async def test_setpoint_positive_charges(coordinator: AeccBatteryCoordinator, config_entry) -> None:

@@ -10,9 +10,10 @@ from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
-    CONF_EXTENDED_POWER,
     CONF_HOST,
     CONF_MANUFACTURER,
+    CONF_MAX_CHARGE_POWER,
+    CONF_MAX_DISCHARGE_POWER,
     CONF_MODEL,
     CONF_NAME,
     CONF_PORT,
@@ -21,6 +22,7 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
     KNOWN_BRANDS,
+    MAX_BATTERY_POWER_W,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,8 +86,14 @@ class AeccBatteryOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
+            # Merge instead of replace: async_create_entry swaps entry.options
+            # wholesale, so the legacy extended_power boolean must be carried
+            # over explicitly - a rollback to <=1.5.1 then keeps its old
+            # behaviour.
             new_options = {
-                CONF_EXTENDED_POWER: user_input.get(CONF_EXTENDED_POWER, False),
+                **self._entry.options,
+                CONF_MAX_CHARGE_POWER: user_input[CONF_MAX_CHARGE_POWER],
+                CONF_MAX_DISCHARGE_POWER: user_input[CONF_MAX_DISCHARGE_POWER],
             }
             self.hass.config_entries.async_update_entry(
                 self._entry,
@@ -102,8 +110,13 @@ class AeccBatteryOptionsFlow(config_entries.OptionsFlow):
             )
             return self.async_create_entry(title="", data=new_options)
 
+        # Late import to avoid a module cycle (__init__ imports config_flow's
+        # sibling modules at setup).
+        from . import resolve_power_limits
+
         current = self._entry.data
-        current_options = self._entry.options
+        charge_default, discharge_default = resolve_power_limits(self._entry.options)
+        power_field = vol.All(vol.Coerce(int), vol.Range(min=100, max=MAX_BATTERY_POWER_W))
         schema = vol.Schema(
             {
                 vol.Required(CONF_HOST, default=current.get(CONF_HOST, DEFAULT_HOST)): str,
@@ -113,7 +126,8 @@ class AeccBatteryOptionsFlow(config_entries.OptionsFlow):
                     KNOWN_BRANDS
                 ),
                 vol.Optional(CONF_MODEL, default=current.get(CONF_MODEL, "")): str,
-                vol.Optional(CONF_EXTENDED_POWER, default=current_options.get(CONF_EXTENDED_POWER, False)): bool,
+                vol.Required(CONF_MAX_CHARGE_POWER, default=charge_default): power_field,
+                vol.Required(CONF_MAX_DISCHARGE_POWER, default=discharge_default): power_field,
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

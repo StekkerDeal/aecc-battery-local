@@ -39,10 +39,12 @@
           "name": "Gerätename",
           "manufacturer": "Batteriemarke",
           "model": "Modell (optional)",
-          "extended_power": "Erweiterter Leistungsbereich (bis 2400W)"
+          "max_charge_power": "Maximale Ladeleistung (W)",
+          "max_discharge_power": "Maximale Entladeleistung (W)"
         },
         "data_description": {
-          "extended_power": "Standardmäßig ist die lokale Steuerung auf 800W begrenzt. Aktivieren Sie dies, um Leistung bis 2400W über Register 3039 zu ermöglichen. Dies ist die gleiche Einstellung wie in der AECC-App."
+          "max_charge_power": "Höchste Ladeleistung, die die Integration ansteuert (100-2400W, Standard 800W). Laden erfolgt aus dem Netz, Einspeisegrenzen gelten hier nicht.",
+          "max_discharge_power": "Höchste Entladeleistung, die die Integration ansteuert (100-2400W, Standard 800W). Für mehr als 800W muss zusätzlich die Einstellung 'On Grid Output' in der Hersteller-App erhöht werden."
         }
       }
     },

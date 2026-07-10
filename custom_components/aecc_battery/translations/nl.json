@@ -39,10 +39,12 @@
           "name": "Apparaatnaam",
           "manufacturer": "Batterijmerk",
           "model": "Model (optioneel)",
-          "extended_power": "Uitgebreid vermogensbereik (tot 2400W)"
+          "max_charge_power": "Maximaal laadvermogen (W)",
+          "max_discharge_power": "Maximaal ontlaadvermogen (W)"
         },
         "data_description": {
-          "extended_power": "Standaard is lokale besturing beperkt tot 800W. Schakel dit in om vermogen tot 2400W toe te staan via register 3039. Dit is dezelfde instelling die de AECC-app gebruikt."
+          "max_charge_power": "Hoogste laadvermogen dat de integratie aanstuurt (100-2400W, standaard 800W). Laden gebeurt vanaf het net, dus terugleverbeperkingen gelden hier niet.",
+          "max_discharge_power": "Hoogste ontlaadvermogen dat de integratie aanstuurt (100-2400W, standaard 800W). Voor meer dan 800W moet ook de 'On Grid Output'-instelling in de fabrikanten-app worden verhoogd."
         }
       }
     },

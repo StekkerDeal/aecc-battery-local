@@ -53,8 +53,10 @@ class AeccPowerSetpoint(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity)
         self._config_entry = config_entry
         # "_power_setpoint" is historically taken by AeccPowerSlider.
         self._attr_unique_id = f"{config_entry.entry_id}_signed_power_setpoint"
-        self._attr_native_min_value = -coordinator.max_register_power
-        self._attr_native_max_value = coordinator.max_register_power
+        # Asymmetric bounds: HA itself rejects a command beyond either
+        # direction's configured limit (positive = charge).
+        self._attr_native_min_value = -coordinator.max_discharge_power
+        self._attr_native_max_value = coordinator.max_charge_power
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -81,7 +83,7 @@ class AeccPowerSetpoint(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity)
 
 
 class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
-    """Battery power slider. Max depends on extended power setting (800W or 2400W)."""
+    """Battery power slider. Max is the larger of the two per-direction limits."""
 
     _attr_has_entity_name = True
     _attr_name = "Battery Power"
