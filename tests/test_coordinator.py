@@ -258,6 +258,24 @@ def test_get_value_summary_preferred_over_storage(
     assert coordinator.get_value("battery_soc") == 75.0
 
 
+def test_backup_power_summary_is_10w_units(coordinator: AeccBatteryCoordinator) -> None:
+    """TotalBackUpPower is 10W units (JET EPS test 2026-07-10: 183.2 for ~1830W)."""
+    coordinator.data = {
+        "Storage_list": [{"OffGridLoadPower": "1832"}],
+        "SSumInfoList": {"TotalBackUpPower": "178.4"},
+    }
+    assert coordinator.get_value("backup_power") == 1784.0
+
+
+def test_backup_power_storage_fallback_is_plain_watts(coordinator: AeccBatteryCoordinator) -> None:
+    """Without the summary field, OffGridLoadPower is used unscaled (watts)."""
+    coordinator.data = {
+        "Storage_list": [{"OffGridLoadPower": "2040"}],
+        "SSumInfoList": {},
+    }
+    assert coordinator.get_value("backup_power") == 2040.0
+
+
 def test_get_value_fallback_to_default(coordinator: AeccBatteryCoordinator) -> None:
     """Test get_value returns default when field not found."""
     coordinator.data = {"SSumInfoList": {}}

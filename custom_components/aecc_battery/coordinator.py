@@ -42,31 +42,33 @@ _LOGGER = logging.getLogger(__name__)
 
 # ── Unified field mapping ─────────────────────────────────────────────────────
 # Maps canonical sensor keys to
-#   (summary_field, storage_field, storage_scale, aggregate_mode).
-# System values read the summary field (SSumInfoList, watts) when present,
-# else aggregate the Storage_list entries (one per unit, mostly deciwatts)
-# with the given scale. summary_field is None where no summary field matches
-# a straight aggregate of the units.
+#   (summary_field, summary_scale, storage_field, storage_scale, aggregate_mode).
+# System values read the summary field (SSumInfoList) when present, else
+# aggregate the Storage_list entries (one per unit, mostly deciwatts) with the
+# given scale. summary_field is None where no summary field matches a straight
+# aggregate of the units.
 # ──────────────────────────────────────────────────────────────────────────────
 
 _AGG_SUM = "sum"
 _AGG_AVG = "avg"
 
-_FIELD_MAP: dict[str, tuple[str | None, str, float, str]] = {
-    "battery_soc": ("AverageBatteryAverageSOC", "BatterySoc", 1.0, _AGG_AVG),
-    "ac_charging_power": ("TotalACChargePower", "AcChargingPower", 0.1, _AGG_SUM),
-    "battery_discharging_power": ("TotalBatteryOutputPower", "BatteryDischargingPower", 0.1, _AGG_SUM),
+_FIELD_MAP: dict[str, tuple[str | None, float, str, float, str]] = {
+    "battery_soc": ("AverageBatteryAverageSOC", 1.0, "BatterySoc", 1.0, _AGG_AVG),
+    "ac_charging_power": ("TotalACChargePower", 1.0, "AcChargingPower", 0.1, _AGG_SUM),
+    "battery_discharging_power": ("TotalBatteryOutputPower", 1.0, "BatteryDischargingPower", 0.1, _AGG_SUM),
     # TotalChargePower is not the unit sum (DC-side, after losses) — always sum.
-    "battery_charging_power": (None, "BatteryChargingPower", 0.1, _AGG_SUM),
-    "pv_power": ("TotalPVPower", "PvChargingPower", 0.1, _AGG_SUM),
-    "pv_charging_power": ("TotalPVChargePower", "PvChargingPower", 0.1, _AGG_SUM),
+    "battery_charging_power": (None, 1.0, "BatteryChargingPower", 0.1, _AGG_SUM),
+    "pv_power": ("TotalPVPower", 1.0, "PvChargingPower", 0.1, _AGG_SUM),
+    "pv_charging_power": ("TotalPVChargePower", 1.0, "PvChargingPower", 0.1, _AGG_SUM),
     # MeterTotalActivePower is the site CT meter, not a sum of the units.
-    "grid_power": ("MeterTotalActivePower", "AcInActivePower", 0.1, _AGG_SUM),
-    # OffGridLoadPower is watts, not deciwatts (verified with a 2000W heater
-    # test on 2026-04-20).
-    "backup_power": ("TotalBackUpPower", "OffGridLoadPower", 1.0, _AGG_SUM),
-    "pv1_power": (None, "Pv1Power", 1.0, _AGG_SUM),
-    "pv2_power": (None, "Pv2Power", 1.0, _AGG_SUM),
+    "grid_power": ("MeterTotalActivePower", 1.0, "AcInActivePower", 0.1, _AGG_SUM),
+    # Backup power breaks both unit conventions: TotalBackUpPower is 10W units
+    # (JET EPS test 2026-07-10: summary 183.2 vs storage 1832 under a ~1830W
+    # load) and OffGridLoadPower is watts, not deciwatts (2000W heater test on
+    # 2026-04-20).
+    "backup_power": ("TotalBackUpPower", 10.0, "OffGridLoadPower", 1.0, _AGG_SUM),
+    "pv1_power": (None, 1.0, "Pv1Power", 1.0, _AGG_SUM),
+    "pv2_power": (None, 1.0, "Pv2Power", 1.0, _AGG_SUM),
 }
 # grid_export_power is derived in the sensor from grid_power (positive only).
 
@@ -329,12 +331,12 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         spec = _FIELD_MAP.get(canonical_key)
         if spec is None:
             return None
-        summary_field, storage_field, storage_scale, agg_mode = spec
+        summary_field, summary_scale, storage_field, storage_scale, agg_mode = spec
         if summary_field is not None:
             val = self.summary.get(summary_field)
             if val is not None:
                 try:
-                    return round(float(val), 1)
+                    return round(float(val) * summary_scale, 1)
                 except (TypeError, ValueError):
                     pass
         return self._aggregate_storage(storage_field, storage_scale, agg_mode)
@@ -346,7 +348,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         spec = _FIELD_MAP.get(canonical_key)
         if spec is None:
             return None
-        _, storage_field, storage_scale, _ = spec
+        _, _, storage_field, storage_scale, _ = spec
         for unit in self.units:
             if self.unit_key(unit) != unit_key:
                 continue

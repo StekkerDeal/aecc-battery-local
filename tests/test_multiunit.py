@@ -127,18 +127,18 @@ def test_summary_totals_match_unit_aggregates() -> None:
     units = ISSUE9_POLL["Storage_list"]
     summary = ISSUE9_POLL["SSumInfoList"]
     for key in _SUMMARY_VALIDATED_KEYS:
-        summary_field, storage_field, scale, mode = _FIELD_MAP[key]
+        summary_field, summary_scale, storage_field, storage_scale, mode = _FIELD_MAP[key]
         assert summary_field is not None, f"{key} lost its summary mapping"
-        values = [float(u[storage_field]) * scale for u in units]
+        values = [float(u[storage_field]) * storage_scale for u in units]
         expected = sum(values) / (len(values) if mode == "avg" else 1)
-        assert float(summary[summary_field]) == pytest.approx(expected, abs=1.0), (
+        assert float(summary[summary_field]) * summary_scale == pytest.approx(expected, abs=1.0), (
             f"{key}: {summary_field} diverges from the unit aggregate"
         )
 
 
 def test_total_charge_power_is_not_the_unit_sum() -> None:
     """TotalChargePower diverges from the unit sum, so it stays unmapped."""
-    summary_field, _, _, _ = _FIELD_MAP["battery_charging_power"]
+    summary_field = _FIELD_MAP["battery_charging_power"][0]
     assert summary_field is None
     unit_sum = sum(float(u["BatteryChargingPower"]) for u in ISSUE9_POLL["Storage_list"])
     assert float(ISSUE9_POLL["SSumInfoList"]["TotalChargePower"]) != unit_sum
