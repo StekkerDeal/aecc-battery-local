@@ -19,6 +19,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.aecc_battery.const import BRAND_PROFILES
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
 from custom_components.aecc_battery.sensor import (
+    _SENSORS,
     AeccFirmwareSensor,
     AeccSensor,
     AeccWifiSignalSensor,
@@ -60,9 +61,15 @@ def _make_sensor(coordinator, config_entry) -> AeccSensor:
         name="Battery SOC",
         canonical_key="battery_soc",
         unit="%",
-        icon="mdi:battery",
+        icon=None,
         is_power=False,
     )
+
+
+def test_soc_sensor_has_no_static_icon() -> None:
+    """SOC must stay icon-less so HA renders its dynamic battery-level icon (#19)."""
+    soc = next(s for s in _SENSORS if s[0] == "battery_soc")
+    assert soc[4] is None
 
 
 def test_holds_last_value_immediately_after_rejection(coordinator: AeccBatteryCoordinator, config_entry) -> None:

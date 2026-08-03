@@ -29,7 +29,7 @@ from .coordinator import AeccBatteryCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 # ── Standard power/measurement sensors ────────────────────────────────────────
-# (key, name, canonical_key, unit, icon, is_power)
+# (key, name, canonical_key, unit, icon, is_power); icon None = let HA pick
 _SENSORS = [
     ("ac_charging_power", "AC Charging Power", "ac_charging_power", UnitOfPower.WATT, "mdi:power-plug", True),
     (
@@ -40,7 +40,11 @@ _SENSORS = [
         "mdi:battery-arrow-down",
         True,
     ),
-    ("battery_soc", "Battery SOC", "battery_soc", PERCENTAGE, "mdi:battery", False),
+    # No icon on purpose: a battery-device-class percentage sensor without an
+    # icon of its own gets Home Assistant's dynamic level icon (mdi:battery-10
+    # through mdi:battery). Setting one pins the frontend to that single glyph
+    # and the SOC stops being readable from the icon (#19).
+    ("battery_soc", "Battery SOC", "battery_soc", PERCENTAGE, None, False),
     ("pv_power", "PV Power", "pv_power", UnitOfPower.WATT, "mdi:solar-power", True),
     ("pv_charging_power", "PV Charging Power", "pv_charging_power", UnitOfPower.WATT, "mdi:solar-panel", True),
     ("grid_power", "Grid / Meter Power", "grid_power", UnitOfPower.WATT, "mdi:transmission-tower", True),
@@ -132,7 +136,7 @@ class AeccSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
         name: str,
         canonical_key: str,
         unit: str,
-        icon: str,
+        icon: str | None,
         is_power: bool,
     ) -> None:
         super().__init__(coordinator)
@@ -217,7 +221,7 @@ class AeccUnitSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
         name: str,
         canonical_key: str,
         unit_of_meas: str,
-        icon: str,
+        icon: str | None,
         is_power: bool,
     ) -> None:
         super().__init__(coordinator)
