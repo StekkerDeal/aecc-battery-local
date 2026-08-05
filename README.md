@@ -7,7 +7,7 @@
 
 A Home Assistant integration for **local TCP control** of AECC-platform home batteries. No cloud, no latency, no external dependencies.
 
-Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, AFERIY, AccuMate, and others.
+Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, AFERIY, AccuMate, JET, Oscal, and others.
 
 ---
 
@@ -52,6 +52,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | **AFERIY** | PS240 | Community confirmed | Confirmed working ([#2](https://github.com/StekkerDeal/aecc-battery-local/issues/2)) |
 | **AccuMate** | Plug-In Battery | Community confirmed | Works out of the box ([#6](https://github.com/StekkerDeal/aecc-battery-local/issues/6)) |
 | **JET** | GreenARK Pro | Tested | Confirmed working on a loan test unit |
+| **Oscal** | Power Storage 2000 | Community confirmed | Sensors and control confirmed working ([#20](https://github.com/StekkerDeal/aecc-battery-local/issues/20)). Total PV is correct; the per-string PV sensors read 0 W on this firmware, under investigation |
 
 ### Expected Compatible (Untested)
 
@@ -95,7 +96,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 1. Go to **Settings > Devices & Services > Add Integration**
 2. Search for **AECC Battery (Local TCP)**
 3. Enter your battery's **IP address**, **TCP port** (default 8080), and a **friendly name**
-4. Select your **battery brand** from the dropdown (Lunergy, Sunpura, Voltdeer, AEG, Other)
+4. Select your **battery brand** from the dropdown (pick **Other** if yours is not listed)
 5. Optionally enter the **model name** (e.g. Hub 2400 AC, S2400, SR)
 
 You can update all settings at any time via the integration's **Configure** button.

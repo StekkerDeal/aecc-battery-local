@@ -46,6 +46,7 @@ KNOWN_BRANDS = [
     "AFERIY",
     "AccuMate",
     "JET",
+    "Oscal",
     "Other",
 ]
 
@@ -104,6 +105,11 @@ BRAND_PROFILES: dict[str, dict[str, float | int]] = {
         "hold_last_value_seconds": 120,
     },
     "JET": {
+        "soc_zero_reject_during_active_w": 200,
+        "soc_max_rate_pct_per_min": 10.0,
+        "hold_last_value_seconds": 120,
+    },
+    "Oscal": {
         "soc_zero_reject_during_active_w": 200,
         "soc_max_rate_pct_per_min": 10.0,
         "hold_last_value_seconds": 120,

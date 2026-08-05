@@ -8,7 +8,7 @@ from custom_components.aecc_battery.cleaners import (
     CleanerContext,
     clean_soc,
 )
-from custom_components.aecc_battery.const import BRAND_PROFILES, DEFAULT_BRAND_PROFILE
+from custom_components.aecc_battery.const import BRAND_PROFILES, DEFAULT_BRAND_PROFILE, KNOWN_BRANDS
 
 
 def _ctx(
@@ -145,3 +145,9 @@ def test_brand_profile_has_required_keys(brand: str) -> None:
     assert "soc_zero_reject_during_active_w" in profile
     assert "soc_max_rate_pct_per_min" in profile
     assert "hold_last_value_seconds" in profile
+
+
+@pytest.mark.parametrize("brand", KNOWN_BRANDS)
+def test_selectable_brand_has_a_profile(brand: str) -> None:
+    """A brand in the dropdown without a profile silently falls back to 'Other'."""
+    assert brand in BRAND_PROFILES
