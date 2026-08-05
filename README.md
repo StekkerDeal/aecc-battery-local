@@ -47,7 +47,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 |---|---|---|---|
 | **Sunpura** | S2400 | Fully tested | PV input and multi-battery setups confirmed working |
 | **Lunergy** | Hub 2400 AC | Fully tested | TCP connection can be flaky; the integration handles reconnects automatically. Per-brand sensor cleaning rejects the known sensor-stuck-at-zero pattern. |
-| **AEG** | Solarcube | Partial | Monitoring works ([#1](https://github.com/StekkerDeal/aecc-battery-local/issues/1)). Battery **power** control has no effect on this firmware (it ignores the control register and uses dedicated power registers instead); needs a register scan from an AEG owner to fix ([#8](https://github.com/StekkerDeal/aecc-battery-local/issues/8)) |
+| **AEG** | Solarcube | Partial | Monitoring and power control work; the control-slot encoding this firmware needs was fixed in v1.4.6 ([#1](https://github.com/StekkerDeal/aecc-battery-local/issues/1), [#8](https://github.com/StekkerDeal/aecc-battery-local/issues/8)). On **multi-unit stacks** the secondary battery may ignore a manual setpoint and keep running its previous schedule; v1.5.5 writes the schedule register the way the AEG app does, which is awaiting confirmation from a multi-unit owner ([#16](https://github.com/StekkerDeal/aecc-battery-local/issues/16)) |
 | **Voltdeer** | SR5000 | Community confirmed | Works out of the box |
 | **AFERIY** | PS240 | Community confirmed | Confirmed working ([#2](https://github.com/StekkerDeal/aecc-battery-local/issues/2)) |
 | **AccuMate** | Plug-In Battery | Community confirmed | Works out of the box ([#6](https://github.com/StekkerDeal/aecc-battery-local/issues/6)) |
@@ -186,7 +186,9 @@ With 2 or more units, the integration creates:
 - The main device with **whole-system** sensors (totals as computed by the master itself) and all controls
 - One **child device per battery** ("Battery 1", "Battery 2", ...) with per-unit SOC, charging/discharging power, PV, backup power, and status
 
-Controls stay on the main device only: the AECC protocol has no per-unit control; the master distributes one setpoint across the stack.
+Controls stay on the main device only: the AECC protocol has no per-unit control, the master is the one that distributes a setpoint across the stack.
+
+How reliably it distributes is firmware-dependent. On AEG Solarcube stacks the secondary has been observed ignoring a manual setpoint and continuing with its previous schedule ([#16](https://github.com/StekkerDeal/aecc-battery-local/issues/16)); v1.5.5 mirrors the schedule register the AEG app uses to work around it, pending confirmation. If your stack behaves this way, please attach a diagnostics export to that issue.
 
 Single-unit systems are unaffected (no child devices). If you add or remove a battery from the stack, **reload the integration** to refresh the device list.
 

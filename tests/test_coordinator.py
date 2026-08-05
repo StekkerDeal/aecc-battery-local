@@ -24,6 +24,8 @@ from custom_components.aecc_battery.const import (
     REG_EMS_ENABLE,
     REG_MAX_FEED_POWER,
     REG_SCHEDULE_MODE,
+    SCHEDULE_MODE_CUSTOM,
+    SCHEDULE_MODE_CUSTOM_AEG,
     SLOT_DISABLED,
     WIFI_RSSI_REFRESH_INTERVAL,
     WORK_MODES,
@@ -429,6 +431,53 @@ async def test_non_aeg_still_signed(coordinator: AeccBatteryCoordinator) -> None
     await coordinator.async_set_battery_control("Charge", 500)
     slot = coordinator.client.set_control_parameters.call_args[0][0][REG_CONTROL_TIME1]
     assert slot == "1,00:00,23:59,-500,0,6,4,0,0,100,10"
+
+
+async def test_aeg_battery_control_uses_schedule_mode_3(
+    aeg_coordinator: AeccBatteryCoordinator,
+) -> None:
+    """AEG pairs a manual setpoint with 3020=3, mirroring its own app (#16)."""
+    aeg_coordinator.data = {"SSumInfoList": {}}
+    await aeg_coordinator.async_set_battery_control("Charge", 500)
+
+    payload = aeg_coordinator.client.set_control_parameters.call_args[0][0]
+    assert payload[REG_SCHEDULE_MODE] == SCHEDULE_MODE_CUSTOM_AEG
+    # The rest of the custom-control block is unchanged by the brand gate.
+    assert payload[REG_EMS_ENABLE] == "1"
+    assert payload[REG_CUSTOM_MODE] == "1"
+
+
+async def test_aeg_work_mode_custom_uses_schedule_mode_3(
+    aeg_coordinator: AeccBatteryCoordinator,
+) -> None:
+    """Selecting Custom / Manual on AEG writes 3020=3, not 6 (#16)."""
+    result = await aeg_coordinator.async_set_work_mode(MODE_CUSTOM)
+    assert result is True
+
+    payload = aeg_coordinator.client.set_control_parameters.call_args[0][0]
+    assert payload[REG_SCHEDULE_MODE] == SCHEDULE_MODE_CUSTOM_AEG
+
+
+async def test_non_aeg_work_mode_custom_keeps_schedule_mode_6(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """Regression guard for #2/#3: other brands still get 3020=6 in Custom."""
+    result = await coordinator.async_set_work_mode(MODE_CUSTOM)
+    assert result is True
+
+    payload = coordinator.client.set_control_parameters.call_args[0][0]
+    assert payload[REG_SCHEDULE_MODE] == SCHEDULE_MODE_CUSTOM == "6"
+
+
+async def test_aeg_self_consumption_schedule_mode_unchanged(
+    aeg_coordinator: AeccBatteryCoordinator,
+) -> None:
+    """The AEG gate touches Custom only; Self-Consumption keeps its own reset."""
+    await aeg_coordinator.async_set_work_mode(MODE_SELF_CONSUMPTION)
+
+    payload = aeg_coordinator.client.set_control_parameters.call_args[0][0]
+    assert payload[REG_SCHEDULE_MODE] == "3"
+    assert payload[REG_CONTROL_TIME1] == SLOT_DISABLED
 
 
 async def test_aeg_slot_round_trips_through_reader(

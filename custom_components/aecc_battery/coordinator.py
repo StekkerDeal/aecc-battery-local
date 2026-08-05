@@ -33,6 +33,8 @@ from .const import (
     REG_MAX_SOC,
     REG_MIN_SOC,
     REG_SCHEDULE_MODE,
+    SCHEDULE_MODE_CUSTOM,
+    SCHEDULE_MODE_CUSTOM_AEG,
     WIFI_RSSI_REFRESH_INTERVAL,
 )
 from .tcp_client import AeccTcpClient
@@ -688,6 +690,15 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return -reg_power, "Charge"
         return 0, "Idle"
 
+    def _custom_schedule_mode(self) -> str:
+        """Schedule-register value (3020) to pair with a manual setpoint.
+
+        AEG wants 3, every other brand 6. See SCHEDULE_MODE_CUSTOM_AEG in const.
+        """
+        if self._manufacturer == BRAND_AEG:
+            return SCHEDULE_MODE_CUSTOM_AEG
+        return SCHEDULE_MODE_CUSTOM
+
     async def async_set_battery_control(self, direction: str, power_w: int) -> bool:
         limit = self.max_charge_power if direction == "Charge" else self.max_discharge_power
         if direction != "Idle" and power_w > limit:
@@ -714,7 +725,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         payload = {
             REG_EMS_ENABLE: "1",
-            REG_SCHEDULE_MODE: "6",
+            REG_SCHEDULE_MODE: self._custom_schedule_mode(),
             REG_AI_SMART_CHARGE: "0",
             REG_AI_SMART_DISC: "0",
             REG_CUSTOM_MODE: "1",
@@ -761,8 +772,11 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if registers is None:
             _LOGGER.warning("SET work_mode: unknown mode %r", mode)
             return False
-        _LOGGER.info("SET work_mode %r -> registers=%s", mode, registers)
-        success = await self._logged_write(dict(registers), f"work_mode({mode})")
+        payload = dict(registers)
+        if mode == MODE_CUSTOM:
+            payload[REG_SCHEDULE_MODE] = self._custom_schedule_mode()
+        _LOGGER.info("SET work_mode %r -> registers=%s", mode, payload)
+        success = await self._logged_write(payload, f"work_mode({mode})")
         if success:
             self._current_work_mode = mode
             self.async_update_listeners()

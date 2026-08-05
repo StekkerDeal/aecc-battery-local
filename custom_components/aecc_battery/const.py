@@ -156,6 +156,19 @@ MODE_CUSTOM = "Custom / Manual"
 
 WORK_MODES = [MODE_SELF_CONSUMPTION, MODE_CUSTOM]
 
+# Schedule-mode value (3020) that accompanies a manual setpoint.
+#
+# 6 = custom schedule, confirmed on AFERIY and the brands behind #2/#3.
+#
+# AEG (Solarcube) is the exception. On a two-unit stack, a manual setpoint
+# written with 3020=6 is executed by the master only, while the slave keeps
+# running whatever schedule it had. Register captures in #16 show the AEG app's
+# own Customized mode leaves 3020 at 3 and drives both units, with every other
+# control register identical to what we write. So on AEG we mirror the app.
+# Experimental, pending field confirmation on a multi-unit AEG stack.
+SCHEDULE_MODE_CUSTOM = "6"
+SCHEDULE_MODE_CUSTOM_AEG = "3"
+
 # Register sets for each mode
 MODE_REGISTERS = {
     MODE_SELF_CONSUMPTION: {
@@ -175,13 +188,14 @@ MODE_REGISTERS = {
     },
     MODE_CUSTOM: {
         REG_EMS_ENABLE: "1",
-        # Switch the schedule to custom (6). Without this, selecting Custom /
+        # Switch the schedule to custom. Without this, selecting Custom /
         # Manual coming from Self-Consumption left the schedule on self-gen
         # (3020=3) so the device ignored the manual setpoint and did nothing
-        # until a Direction/Power command (which writes 3020=6) was sent. That
-        # is why users had to go via Idle first to make Manual respond. Mirror
-        # of the 3020=3 reset added to Self-Consumption for #2/#3.
-        REG_SCHEDULE_MODE: "6",
+        # until a Direction/Power command (which writes the schedule) was sent.
+        # That is why users had to go via Idle first to make Manual respond.
+        # Mirror of the 3020=3 reset added to Self-Consumption for #2/#3.
+        # AEG overrides this per SCHEDULE_MODE_CUSTOM_AEG, see the coordinator.
+        REG_SCHEDULE_MODE: SCHEDULE_MODE_CUSTOM,
         REG_AI_SMART_CHARGE: "0",
         REG_AI_SMART_DISC: "0",
         REG_CUSTOM_MODE: "1",
