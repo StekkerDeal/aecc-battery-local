@@ -6,11 +6,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.aecc_battery.const import REG_CONTROL_TIME1
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
 from custom_components.aecc_battery.number import AeccPowerSetpoint, AeccPowerSlider
-from custom_components.aecc_battery.select import AeccBatteryDirection
+from custom_components.aecc_battery.select import AeccBatteryDirection, AeccWorkModeSelect
 
 
 @pytest.fixture
@@ -118,16 +119,44 @@ async def test_setpoint_zero_idles(coordinator: AeccBatteryCoordinator, config_e
     assert entity.native_value == 0
 
 
-async def test_setpoint_failed_write_keeps_state(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+async def test_setpoint_failed_write_raises_and_keeps_state(coordinator: AeccBatteryCoordinator, config_entry) -> None:
     entity = AeccPowerSetpoint(coordinator, config_entry)
     await entity.async_set_native_value(300)
     coordinator.client.set_control_parameters = AsyncMock(return_value=None)
-    await entity.async_set_native_value(-700)
+
+    # A write the battery never confirmed must surface to the user instead of
+    # leaving Home Assistant showing a value the battery does not have.
+    with pytest.raises(HomeAssistantError) as err:
+        await entity.async_set_native_value(-700)
+    assert err.value.translation_key == "set_failed"
+
     # Failed write: commanded state (and thus every entity) keeps the last
     # successful command.
     assert coordinator.commanded_direction == "Charge"
     assert coordinator.commanded_power == 300
     assert entity.native_value == 300
+
+
+async def test_slider_failed_write_does_not_claim_the_power(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    """Regression: the slider used to record its value before the write."""
+    slider = AeccPowerSlider(coordinator, config_entry)
+    await slider.async_set_native_value(300)
+    coordinator.client.set_control_parameters = AsyncMock(return_value=None)
+
+    with pytest.raises(HomeAssistantError):
+        await slider.async_set_native_value(900)
+
+    assert coordinator.commanded_power == 300
+    assert slider.native_value == 300
+
+
+async def test_work_mode_rejects_unknown_option(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    entity = AeccWorkModeSelect(coordinator, config_entry)
+    with pytest.raises(HomeAssistantError) as err:
+        await entity.async_select_option("Party Mode")
+    assert err.value.translation_key == "set_rejected"
+    # Rejected before anything was sent.
+    coordinator.client.set_control_parameters.assert_not_awaited()
 
 
 async def test_battery_control_records_commanded_power(coordinator: AeccBatteryCoordinator) -> None:
