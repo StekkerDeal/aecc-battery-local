@@ -52,5 +52,13 @@
       "cannot_connect": "Connexion impossible. Vérifiez l'adresse IP, le port et que la batterie est en ligne.",
       "unknown": "Erreur inattendue. Consultez le journal Home Assistant pour plus de détails."
     }
+  },
+  "exceptions": {
+    "set_failed": {
+      "message": "La commande pour {entity} n'a pas atteint la batterie. Vérifiez la connexion (l'application du fabricant occupe-t-elle l'unique connexion TCP ?) et réessayez."
+    },
+    "set_rejected": {
+      "message": "{entity} ne peut pas être réglé sur cette valeur : {reason}"
+    }
   }
 }

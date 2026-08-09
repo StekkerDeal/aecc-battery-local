@@ -52,5 +52,13 @@
       "cannot_connect": "Cannot connect - check the IP, port, and that the battery is online.",
       "unknown": "Unexpected error - see the Home Assistant log for details."
     }
+  },
+  "exceptions": {
+    "set_failed": {
+      "message": "The command for {entity} did not reach the battery. Check the connection (is the vendor app holding the battery's only TCP slot?) and try again."
+    },
+    "set_rejected": {
+      "message": "{entity} cannot be set to that value: {reason}"
+    }
   }
 }

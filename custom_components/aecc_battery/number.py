@@ -8,14 +8,20 @@ from homeassistant.components.number import NumberDeviceClass, NumberEntity, Num
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfPower
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import AeccBatteryCoordinator
+from .entity import raise_set_failed
 
 _LOGGER = logging.getLogger(__name__)
+
+DEPRECATION_NOTE = (
+    "%s is deprecated and will be removed in 2.0.0. Use the signed Power Setpoint "
+    "entity instead: one write, positive charges, negative discharges, 0 idles."
+)
 
 
 async def async_setup_entry(
@@ -79,11 +85,16 @@ class AeccPowerSetpoint(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity)
         # The coordinator records direction + power + Custom mode and calls
         # async_update_listeners() on success, refreshing every entity.
         if not await self.coordinator.async_set_power_setpoint(value):
-            _LOGGER.warning("Failed to set power setpoint to %s W", value)
+            raise_set_failed(self._attr_name)
 
 
 class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
-    """Battery power slider. Max is the larger of the two per-direction limits."""
+    """Battery power slider. Max is the larger of the two per-direction limits.
+
+    Deprecated: an unsigned magnitude needs the Battery Direction select to
+    mean anything, which is two ordered writes for one intent. The signed
+    Power Setpoint says the same thing in one. Removal in 2.0.0.
+    """
 
     _attr_has_entity_name = True
     _attr_name = "Battery Power"
@@ -99,6 +110,7 @@ class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_power_setpoint"
         self._attr_native_max_value = coordinator.max_register_power
+        self._deprecation_logged = False
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -113,17 +125,21 @@ class AeccPowerSlider(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
         return self.coordinator.last_update_success
 
     async def async_set_native_value(self, value: float) -> None:
-        power_w = int(value)
-        self.coordinator.commanded_power = power_w
+        if not self._deprecation_logged:
+            _LOGGER.warning(DEPRECATION_NOTE, "Battery Power")
+            self._deprecation_logged = True
 
+        power_w = int(value)
         direction = self.coordinator.commanded_direction
         if direction == "Idle" and power_w > 0:
             direction = "Charge"
 
-        # The coordinator records direction + Custom mode and calls
-        # async_update_listeners() on success, refreshing every entity.
+        # The coordinator records direction + power + Custom mode and calls
+        # async_update_listeners() on success, refreshing every entity. Note
+        # that commanded_power is left alone until the write lands: claiming
+        # it up front made the slider show a value the battery never took.
         if not await self.coordinator.async_set_battery_control(direction, power_w):
-            _LOGGER.warning("Failed to set power to %s W", power_w)
+            raise_set_failed(self._attr_name)
 
 
 class AeccMinSoc(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
@@ -155,12 +171,10 @@ class AeccMinSoc(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         soc = int(value)
-        success = await self.coordinator.async_set_min_soc(soc)
-        if success:
-            self._commanded = soc
-            self.async_write_ha_state()
-        else:
-            _LOGGER.warning("Failed to set min SOC to %s%%", soc)
+        if not await self.coordinator.async_set_min_soc(soc):
+            raise_set_failed(self._attr_name)
+        self._commanded = soc
+        self.async_write_ha_state()
 
 
 class AeccMaxSoc(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
@@ -192,9 +206,7 @@ class AeccMaxSoc(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         soc = int(value)
-        success = await self.coordinator.async_set_max_soc(soc)
-        if success:
-            self._commanded = soc
-            self.async_write_ha_state()
-        else:
-            _LOGGER.warning("Failed to set max SOC to %s%%", soc)
+        if not await self.coordinator.async_set_max_soc(soc):
+            raise_set_failed(self._attr_name)
+        self._commanded = soc
+        self.async_write_ha_state()
