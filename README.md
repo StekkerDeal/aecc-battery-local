@@ -15,7 +15,7 @@ Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, A
 
 | Setup | Sensors | Controls | Energy Dashboard |
 |---|---|---|---|
-| ![Setup](images/setup.png) | ![Sensors](images/sensors.png) | ![Controls](images/controls.png) | ![Energy Dashboard](images/ha-energy-dashboard.png) |
+| ![Setup](https://raw.githubusercontent.com/StekkerDeal/aecc-battery-local/main/images/setup.png) | ![Sensors](https://raw.githubusercontent.com/StekkerDeal/aecc-battery-local/main/images/sensors.png) | ![Controls](https://raw.githubusercontent.com/StekkerDeal/aecc-battery-local/main/images/controls.png) | ![Energy Dashboard](https://raw.githubusercontent.com/StekkerDeal/aecc-battery-local/main/images/ha-energy-dashboard.png) |
 
 ---
 
@@ -27,7 +27,8 @@ Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, A
 - **Hybrid availability**: entities hold their last known value through brief sensor blips, then transition to `unavailable` after a sustained outage so automations and dashboards see an honest signal.
 - **Write-back verification**: every control command is re-read after writing; mismatches are logged so silent firmware drops become visible.
 - **Energy Dashboard ready**: accumulated kWh sensors (`total_increasing`) for the HA Energy Dashboard
-- **Full battery control**: direction (Charge/Discharge/Idle), signed power setpoint, per-direction power limits (up to 2400W), SOC limits
+- **Full battery control**: one signed power setpoint (positive charges, negative discharges), per-direction power limits (up to 2400W), SOC limits
+- **Honest controls**: a command the battery never confirmed raises an error in the interface instead of leaving a value on screen that was never accepted
 - **Work mode selector**: Self-Consumption (AI), Custom/Manual
 - **Multi-brand**: select your brand during setup; DeviceInfo shows correct manufacturer and model
 - **Multi-unit**: master/slave stacks get one device per battery with per-unit telemetry, plus whole-system totals
@@ -74,12 +75,20 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 
 ## Installation via HACS
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=StekkerDeal&repository=aecc-battery-local&category=integration)
+
+Click the badge, then **Download**, then restart Home Assistant.
+
+Adding it by hand instead:
+
 1. Open **HACS** in Home Assistant
 2. Go to **Integrations**
 3. Click the three-dot menu > **Custom repositories**
 4. Add `https://github.com/StekkerDeal/aecc-battery-local` as an **Integration**
 5. Search for **AECC Battery** and click **Download**
 6. Restart Home Assistant
+
+Risky changes are published as pre-releases first, so they can be tried on real hardware before everyone gets them. To see them, open the integration in HACS, use the three-dot menu and enable **Show beta versions**.
 
 ---
 
@@ -169,9 +178,9 @@ Every control command (direction, power, work mode, SOC limits) is automatically
 
 | Entity | Type | Description |
 |---|---|---|
-| Battery Direction | Select | Charge, Discharge, or Idle |
-| Battery Power | Number (slider) | Power target magnitude, up to the higher of the two power limits |
-| Power Setpoint | Number (box) | Signed one-write control: positive = charge, negative = discharge, 0 = idle. Bounds follow the per-direction power limits. Made for external energy managers |
+| Power Setpoint | Number (box) | Signed one-write control: positive = charge, negative = discharge, 0 = idle. Bounds follow the per-direction power limits. The control to use |
+| Battery Direction | Select | Charge, Discharge, or Idle. **Deprecated, removal in 2.0.0** |
+| Battery Power | Number (slider) | Power target magnitude, up to the higher of the two power limits. **Deprecated, removal in 2.0.0** |
 | Discharge Limit | Number (slider) | Min SOC before discharge stops (5-50%) |
 | Charge Limit | Number (slider) | Max SOC before charging stops (50-100%) |
 | Work Mode | Select | Self-Consumption (AI), Custom/Manual |
@@ -209,26 +218,26 @@ Energy sensors use Riemann sum integration (the AECC TCP protocol does not expos
 
 ## Battery Control
 
-### Direction + Power
+### Power Setpoint (the one to use)
 
-Two entities work together:
+**Power Setpoint** is a single signed number: positive = charge, negative = discharge, 0 = idle, in watts. One write says what you mean, including the switch to Custom mode, so an automation can never race between two entities. Setting it to 0 holds an active 0 W setpoint, which is how you stop the battery. There is no separate "Disabled" mode, because turning EMS off does not reliably stop the battery (it hands control back to the device's own logic).
+
+If a write does not reach the battery, Home Assistant now shows an error and the entity keeps the value the battery actually has, instead of quietly displaying a command that never landed.
+
+### Direction + Power (deprecated, removal in 2.0.0)
+
+Two older entities do the same job in two writes:
 - **Battery Direction** (select): Charge, Discharge, or Idle
 - **Battery Power** (slider): 0 up to the higher of the two configured power limits
 
-Selecting a direction (or moving the Power slider) automatically switches to Custom mode and writes the schedule register. The Work Mode selector reflects this and shows Custom.
-
-To stop the battery, set Battery Direction to Idle (or Power to 0). This holds an active 0 W setpoint. There is no separate "Disabled" mode, because turning EMS off does not reliably stop the battery (it hands control back to the device's own logic).
-
-### Power Setpoint (one write)
-
-For automations and external controllers there is also **Power Setpoint**: a single signed number. Positive = charge, negative = discharge, 0 = idle, in watts. Writing it does the same as setting Direction + Power together (including the switch to Custom mode), but in one service call, so an automation can never race between the two writes. All control entities stay in sync whichever one you use.
+They still work, and all control entities stay in sync whichever you use, but an unsigned magnitude is meaningless without the direction next to it, and keeping two entities synchronized is work that the sign in Power Setpoint does for free. Both will be removed in 2.0.0; using them logs a deprecation warning. Automations that write `number.<name>_battery_power` plus `select.<name>_battery_direction` become one `number.set_value` call on `number.<name>_power_setpoint`.
 
 ### Work Modes
 
 | Mode | Description |
 |---|---|
 | Self-Consumption (AI) | Automatic charge/discharge based on solar and consumption |
-| Custom / Manual | Manual control via Direction + Power |
+| Custom / Manual | Manual control via the Power Setpoint |
 
 ### SOC Limits
 
@@ -321,7 +330,7 @@ When [opening an issue](https://github.com/StekkerDeal/aecc-battery-local/issues
 
 The export contains the integration version, device model and firmware, configured brand profile, the last raw poll response, a fresh dump of control registers `3000-3130`, and the last 20 control writes with their verify outcomes. Serial numbers and the local IP are redacted automatically.
 
-If the bug involves a specific control flow (e.g. switching between work modes), capture one diagnostics file per step — the diff tells us which registers behave unexpectedly.
+If the bug involves a specific control flow (e.g. switching between work modes), capture one diagnostics file per step - the diff tells us which registers behave unexpectedly.
 
 ---
 
