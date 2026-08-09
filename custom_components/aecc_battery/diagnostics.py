@@ -89,7 +89,7 @@ _REGISTER_RANGE = list(range(3000, 3131))
 _REGISTER_RANGE_FALLBACK = list(range(3000, 3040))
 
 # Friendly labels for the registers we already understand. Anything not
-# in this map is included with raw address only — useful for spotting
+# in this map is included with raw address only - useful for spotting
 # changes during the antiReflux register hunt.
 _KEY_REGISTER_LABELS: dict[str, str] = {
     REG_EMS_ENABLE: "EMS enable (3000)",
@@ -200,7 +200,7 @@ async def _fetch_control_registers(
     }
     try:
         resp = await coordinator.client.get_control_parameters(_REGISTER_RANGE)
-    except Exception as exc:  # noqa: BLE001 — diagnostics must never raise
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never raise
         _LOGGER.debug("Diagnostics wide register read failed: %s", exc)
         section["error"] = f"wide read failed: {exc}"
         resp = None
@@ -246,12 +246,12 @@ async def _read_integration_version(hass: HomeAssistant) -> str | None:
     """Return the integration version from its loaded manifest.
 
     Avoids hardcoding the version in two places. Returns ``None`` if HA
-    cannot resolve the integration for any reason — diagnostics still
+    cannot resolve the integration for any reason - diagnostics still
     render every other section.
     """
     try:
         integration = await async_get_integration(hass, DOMAIN)
-    except Exception as exc:  # noqa: BLE001 — diagnostics must never raise
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never raise
         _LOGGER.debug("Could not read integration version for diagnostics: %s", exc)
         return None
     return integration.version

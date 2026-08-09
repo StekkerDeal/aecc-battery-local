@@ -81,7 +81,7 @@ class TCPClientManager:
             _LOGGER.error("Connection timed out: %s:%s", self.host, self.port)
             raise
         except OSError as exc:
-            _LOGGER.error("Connection failed: %s:%s – %s", self.host, self.port, exc)
+            _LOGGER.error("Connection failed: %s:%s - %s", self.host, self.port, exc)
             raise
 
     async def close(self) -> None:

@@ -17,7 +17,7 @@ from custom_components.aecc_battery.const import (
 _HOST = "192.168.1.50"
 _PORT = 8080
 _LEGACY = f"{_HOST}:{_PORT}"
-_SERIAL = "JM0225391ASG0290"
+_SERIAL = "JM0000000ASG0001"
 
 
 def _entry(hass: HomeAssistant) -> MockConfigEntry:

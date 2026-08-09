@@ -127,7 +127,7 @@ JET_DM_RESPONSE = {
     "SerialNumber": 1,
     "Target": "HA",
     "ControlInfo": {
-        "8": "JM0225391ASG0290",
+        "8": "JM0000000ASG0001",
         "20": "GTSW0000",
         "21": "1.4.9.9.9.1.5",
         "76": "-35",
@@ -145,7 +145,7 @@ async def test_probe_parses_controlinfo_jet(coordinator: AeccBatteryCoordinator,
     """JET's ControlInfo-keyed response populates serial, firmware, model, RSSI."""
     mock_client.get_device_management_info = AsyncMock(return_value=JET_DM_RESPONSE)
     await coordinator.async_probe_device_management()
-    assert coordinator.device_serial == "JM0225391ASG0290"
+    assert coordinator.device_serial == "JM0000000ASG0001"
     assert coordinator.firmware_version == "1.4.9.9.9.1.5"
     assert coordinator.device_model == "GTSW0000"
     assert coordinator.wifi_rssi == -35
