@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .cleaners import CLEANERS, CleanerContext
@@ -57,7 +57,7 @@ _FIELD_MAP: dict[str, tuple[str | None, float, str, float, str]] = {
     "battery_soc": ("AverageBatteryAverageSOC", 1.0, "BatterySoc", 1.0, _AGG_AVG),
     "ac_charging_power": ("TotalACChargePower", 1.0, "AcChargingPower", 0.1, _AGG_SUM),
     "battery_discharging_power": ("TotalBatteryOutputPower", 1.0, "BatteryDischargingPower", 0.1, _AGG_SUM),
-    # TotalChargePower is not the unit sum (DC-side, after losses) — always sum.
+    # TotalChargePower is not the unit sum (DC-side, after losses) - always sum.
     "battery_charging_power": (None, 1.0, "BatteryChargingPower", 0.1, _AGG_SUM),
     "pv_power": ("TotalPVPower", 1.0, "PvChargingPower", 0.1, _AGG_SUM),
     "pv_charging_power": ("TotalPVChargePower", 1.0, "PvChargingPower", 0.1, _AGG_SUM),
@@ -327,7 +327,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def units(self) -> list[dict[str, Any]]:
-        """All Storage_list entries — one per physical battery unit."""
+        """All Storage_list entries - one per physical battery unit."""
         if not self.data:
             return []
         return self.data.get("Storage_list") or []

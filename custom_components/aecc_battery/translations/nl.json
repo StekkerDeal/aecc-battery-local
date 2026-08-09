@@ -52,5 +52,13 @@
       "cannot_connect": "Kan niet verbinden. Controleer het IP-adres, de poort en of de batterij online is.",
       "unknown": "Onverwachte fout. Zie het Home Assistant-logboek voor details."
     }
+  },
+  "exceptions": {
+    "set_failed": {
+      "message": "Het commando voor {entity} heeft de batterij niet bereikt. Controleer de verbinding (houdt de app van de fabrikant de enige TCP-verbinding bezet?) en probeer het opnieuw."
+    },
+    "set_rejected": {
+      "message": "{entity} kan niet op die waarde worden ingesteld: {reason}"
+    }
   }
 }
