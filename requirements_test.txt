@@ -1,3 +1,11 @@
-pytest>=8.0
-pytest-asyncio>=0.23
-pytest-homeassistant-custom-component>=0.13
+# pytest-homeassistant-custom-component pins the whole test stack exactly
+# (homeassistant, pytest, pytest-asyncio, pytest-socket, ...). Never add a
+# floor for one of those packages here: it collides with the exact pin and
+# makes every Dependabot PR unresolvable. Bump this line instead.
+#
+# 0.13.355 -> homeassistant 2026.8.1, pytest 9.0.3, pytest-asyncio 1.4.0.
+# Requires Python 3.14, which is what CI and scripts/check.ps1 run.
+pytest-homeassistant-custom-component==0.13.355
+
+# Pinned so a ruff release never turns an unrelated pull request red.
+ruff==0.16.2
