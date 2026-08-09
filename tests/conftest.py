@@ -22,6 +22,19 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 
 @pytest.fixture
+def bypass_integration_setup():
+    """Stop a created entry from setting the integration up for real.
+
+    The config flow does not talk to the battery, but Home Assistant sets the
+    new entry up as soon as the flow finishes, and that opens a TCP socket.
+    Tests that only exercise the flow must not reach the network: pytest-socket
+    blocks it and fails the test in teardown.
+    """
+    with patch("custom_components.aecc_battery.async_setup_entry", return_value=True) as mock_setup:
+        yield mock_setup
+
+
+@pytest.fixture
 def mock_tcp_client():
     """Return a mocked AeccTcpClient."""
     with patch("custom_components.aecc_battery.tcp_client.AeccTcpClient", autospec=True) as mock_cls:

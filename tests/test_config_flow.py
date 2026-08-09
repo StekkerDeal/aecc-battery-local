@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -19,6 +20,11 @@ from custom_components.aecc_battery.const import (
 )
 
 from .conftest import MOCK_USER_INPUT
+
+# Every test here finishes a flow, and a finished flow makes Home Assistant set
+# the entry up - which would open a real socket. The flow itself is what is
+# under test, so the setup is stubbed out for the whole module.
+pytestmark = pytest.mark.usefixtures("bypass_integration_setup")
 
 
 async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
