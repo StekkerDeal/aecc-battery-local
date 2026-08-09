@@ -1,0 +1,107 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+
+        **Was your issue closed but the problem persists?** Due to GitHub permissions,
+        only maintainers can reopen issues. Please comment on the closed issue
+        describing what still doesn't work, and we will reopen it for you.
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.8.1"
+    validations:
+      required: true
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      description: Settings > Devices & Services > AECC Battery, or the HACS entry.
+      placeholder: "1.6.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: brand
+    attributes:
+      label: Battery brand
+      description: The brand selected during setup.
+      options:
+        - Sunpura
+        - Lunergy
+        - AEG
+        - Voltdeer
+        - AFERIY
+        - AccuMate
+        - JET
+        - Oscal
+        - Other / unknown
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: "Hub 2400 AC, S2400, SR5000, Solarcube AS-BBL09, ..."
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware versions
+      description: From the vendor app, or the device page in Home Assistant (BMS / collector / DSP if you have them).
+      placeholder: "BMS V2.05, collector 1.4.9.9.1.1, DSP V6.31"
+  - type: dropdown
+    id: units
+    attributes:
+      label: Setup
+      options:
+        - Single battery
+        - Master/slave stack (2 units)
+        - Master/slave stack (3 or more units)
+    validations:
+      required: true
+  - type: checkboxes
+    id: preconditions
+    attributes:
+      label: Preconditions checked
+      options:
+        - label: The battery has a static local IP and answers on TCP port 8080
+        - label: The vendor app was closed while reproducing (the battery answers one TCP client at a time)
+        - label: For power that stays below what was requested - "On Grid Output" in the vendor app is set above the value I am asking for
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: checkboxes
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      options:
+        - label: I attached a diagnostics download (Settings > Devices & Services > AECC Battery > three dots > Download Diagnostics). Serials and the local IP are redacted automatically.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log entries
+      description: Settings > System > Logs, filter on "aecc". Remove anything you consider private.
+      render: text
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
