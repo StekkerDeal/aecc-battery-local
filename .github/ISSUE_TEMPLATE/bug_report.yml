@@ -71,7 +71,7 @@ body:
       label: Preconditions checked
       options:
         - label: The battery has a static local IP and answers on TCP port 8080
-        - label: The vendor app was closed while reproducing (the battery answers one TCP client at a time)
+        - label: I noted whether the vendor app was open while reproducing (it talks to the same battery and can issue its own commands)
         - label: For power that stays below what was requested - "On Grid Output" in the vendor app is set above the value I am asking for
   - type: textarea
     id: description
