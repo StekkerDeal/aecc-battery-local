@@ -141,12 +141,12 @@ async def test_diagnostics_no_sensitive_strings_leak(hass: HomeAssistant, mock_c
     and assert no sentinel appears in the JSON output.
 
     This is a belt-and-braces test that catches PII regressions even when
-    a future firmware adds fields we haven't anticipated — we prove the
+    a future firmware adds fields we haven't anticipated - we prove the
     redaction list covers every path data takes into the dump, rather
     than relying on per-field assertions that only catch known fields.
     """
     serial_sentinel = "ZZ-SENTINEL-DEVICE-SERIAL"
-    host_sentinel = "203.0.113.42"  # TEST-NET-3 — guaranteed not real
+    host_sentinel = "203.0.113.42"  # TEST-NET-3 - guaranteed not real
     storage_sn_sentinel = "ZZ-SENTINEL-STORAGE-SN"
     wifi_password_sentinel = "ZZ-SENTINEL-WIFI-PASSWORD"
     user_email_sentinel = "sentinel-user@example.invalid"
