@@ -7,7 +7,7 @@
 
 A Home Assistant integration for **local TCP control** of AECC-platform home batteries. No cloud, no latency, no external dependencies.
 
-Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, AFERIY, AccuMate, JET, Oscal, and others.
+Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, AFERIY, AccuMate, JET, Oscal, Fossibot, and others.
 
 ---
 
@@ -54,6 +54,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | **AccuMate** | Plug-In Battery | Community confirmed | Works out of the box ([#6](https://github.com/StekkerDeal/aecc-battery-local/issues/6)) |
 | **JET** | GreenARK Pro | Tested | Confirmed working on a loan test unit |
 | **Oscal** | Power Storage 2000 | Community confirmed | Sensors and control confirmed working ([#20](https://github.com/StekkerDeal/aecc-battery-local/issues/20)). Total PV is correct; the per-string PV sensors read 0 W on this firmware, under investigation |
+| **Fossibot** | FBP 1200 | Community confirmed | Confirmed working ([#24](https://github.com/StekkerDeal/aecc-battery-local/issues/24)). Same firmware quirk as the Oscal: total PV is correct, but the per-unit charging and per-string PV values read 0 W |
 
 ### Expected Compatible (Untested)
 
