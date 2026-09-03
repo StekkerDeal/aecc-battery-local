@@ -172,12 +172,13 @@ WORK_MODES = [MODE_SELF_CONSUMPTION, MODE_CUSTOM]
 #
 # 6 = custom schedule, confirmed on AFERIY and the brands behind #2/#3.
 #
-# AEG (Solarcube) is the exception. On a two-unit stack, a manual setpoint
-# written with 3020=6 is executed by the master only, while the slave keeps
-# running whatever schedule it had. Register captures in #16 show the AEG app's
-# own Customized mode leaves 3020 at 3 and drives both units, with every other
-# control register identical to what we write. So on AEG we mirror the app.
-# Experimental, pending field confirmation on a multi-unit AEG stack.
+# AEG (Solarcube) is the exception: its app's own Customized mode leaves 3020
+# at 3 (#16 register captures), so on AEG we mirror the app. This was tried as
+# a fix for the secondary unit ignoring a manual setpoint on a two-unit stack.
+# It is not one: with 3020=3 confirmed on the device the secondary still does
+# not follow (#16, two stacks). Manual control reaches the master only, on any
+# brand, because the master does not forward a local write to the other units.
+# The value stays because it is what the AEG app writes and it is harmless.
 SCHEDULE_MODE_CUSTOM = "6"
 SCHEDULE_MODE_CUSTOM_AEG = "3"
 

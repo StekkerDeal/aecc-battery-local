@@ -31,7 +31,7 @@ Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, A
 - **Honest controls**: a command the battery never confirmed raises an error in the interface instead of leaving a value on screen that was never accepted
 - **Work mode selector**: Self-Consumption (AI), Custom/Manual
 - **Multi-brand**: select your brand during setup; DeviceInfo shows correct manufacturer and model
-- **Multi-unit**: master/slave stacks get one device per battery with per-unit telemetry, plus whole-system totals
+- **Multi-unit**: master/slave stacks get one device per battery with per-unit telemetry, plus whole-system totals. Manual control reaches the master only, see [Multi-unit setups](#multi-unit--master-slave-setups)
 - **Multi-language**: English, Dutch, German, French
 
 ---
@@ -47,14 +47,14 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | Brand | Model | Status | Notes |
 |---|---|---|---|
 | **Sunpura** | S2400 | Fully tested | PV input and multi-battery setups confirmed working |
-| **Lunergy** | Hub 2400 AC | Fully tested | TCP connection can be flaky; the integration handles reconnects automatically. Per-brand sensor cleaning rejects the known sensor-stuck-at-zero pattern. |
-| **AEG** | Solarcube | Partial | Monitoring and power control work; the control-slot encoding this firmware needs was fixed in v1.4.6 ([#1](https://github.com/StekkerDeal/aecc-battery-local/issues/1), [#8](https://github.com/StekkerDeal/aecc-battery-local/issues/8)). On **multi-unit stacks** the secondary battery may ignore a manual setpoint and keep running its previous schedule; v1.5.5 writes the schedule register the way the AEG app does, which is awaiting confirmation from a multi-unit owner ([#16](https://github.com/StekkerDeal/aecc-battery-local/issues/16)) |
+| **Lunergy** | Hub 2400 AC | Fully tested | TCP link can be flaky; the integration reconnects automatically |
+| **AEG** | Solarcube | Community confirmed | Monitoring and control confirmed working |
 | **Voltdeer** | SR5000 | Community confirmed | Works out of the box |
-| **AFERIY** | PS240 | Community confirmed | Confirmed working ([#2](https://github.com/StekkerDeal/aecc-battery-local/issues/2)) |
-| **AccuMate** | Plug-In Battery | Community confirmed | Works out of the box ([#6](https://github.com/StekkerDeal/aecc-battery-local/issues/6)) |
-| **JET** | GreenARK Pro | Tested | Confirmed working on a loan test unit |
-| **Oscal** | Power Storage 2000 | Community confirmed | Sensors and control confirmed working ([#20](https://github.com/StekkerDeal/aecc-battery-local/issues/20)). Total PV is correct; the per-string PV sensors read 0 W on this firmware, under investigation |
-| **Fossibot** | FBP 1200 | Community confirmed | Confirmed working ([#24](https://github.com/StekkerDeal/aecc-battery-local/issues/24)). Same firmware quirk as the Oscal: total PV is correct, but the per-unit charging and per-string PV values read 0 W |
+| **AFERIY** | PS240 | Community confirmed | Works out of the box |
+| **AccuMate** | Plug-In Battery | Community confirmed | Works out of the box |
+| **JET** | GreenARK Pro | Fully tested | Tested on a loan unit |
+| **Oscal** | Power Storage 2000 | Community confirmed | Per-string PV sensors read 0 W on this firmware |
+| **Fossibot** | FBP 1200 | Community confirmed | Per-unit charging power and per-string PV read 0 W on this firmware |
 
 ### Expected Compatible (Untested)
 
@@ -197,9 +197,9 @@ With 2 or more units, the integration creates:
 - The main device with **whole-system** sensors (totals as computed by the master itself) and all controls
 - One **child device per battery** ("Battery 1", "Battery 2", ...) with per-unit SOC, charging/discharging power, PV, backup power, and status
 
-Controls stay on the main device only: the AECC protocol has no per-unit control, the master is the one that distributes a setpoint across the stack.
+**Manual control reaches the master only.** The AECC local protocol has no per-unit control, and the master does not forward a locally written setpoint to the other units. On a paired stack the secondary keeps executing whatever schedule the vendor app last gave it. This was established on AEG Solarcube stacks in [#16](https://github.com/StekkerDeal/aecc-battery-local/issues/16): every register the integration writes is confirmed applied and matches the state the app leaves behind, yet only the master responds. The app drives the other units through the cloud, which this integration deliberately does not use. Monitoring of every unit is unaffected.
 
-How reliably it distributes is firmware-dependent. On AEG Solarcube stacks the secondary has been observed ignoring a manual setpoint and continuing with its previous schedule ([#16](https://github.com/StekkerDeal/aecc-battery-local/issues/16)); v1.5.5 mirrors the schedule register the AEG app uses to work around it, pending confirmation. If your stack behaves this way, please attach a diagnostics export to that issue.
+**If you need to control both units**, register each battery separately in the vendor app instead of pairing them, so each gets its own IP and answers on port 8080. Add the integration once per battery and send each entry its share of the target. One owner runs this with an automation writing half the target to each unit ([#16](https://github.com/StekkerDeal/aecc-battery-local/issues/16)). Totals then come from Home Assistant rather than from the master. This is the supported way to control a multi-unit system today.
 
 Single-unit systems are unaffected (no child devices). If you add or remove a battery from the stack, **reload the integration** to refresh the device list.
 

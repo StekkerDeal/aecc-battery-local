@@ -26,6 +26,15 @@ def mock_client():
     return client
 
 
+@pytest.fixture(autouse=True)
+def _no_setpoint_debounce():
+    """Existing setpoint tests exercise the write itself, not the debounce."""
+    original = AeccPowerSetpoint._DEBOUNCE_SECONDS
+    AeccPowerSetpoint._DEBOUNCE_SECONDS = 0
+    yield
+    AeccPowerSetpoint._DEBOUNCE_SECONDS = original
+
+
 @pytest.fixture
 def coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
     coord = AeccBatteryCoordinator(
@@ -164,3 +173,15 @@ async def test_battery_control_records_commanded_power(coordinator: AeccBatteryC
     assert await coordinator.async_set_battery_control("Charge", 700) is True
     assert coordinator.commanded_power == 700
     assert coordinator.commanded_direction == "Charge"
+
+
+async def test_setpoint_burst_collapses_to_last_value(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    """Stepping the box 1 W at a time must not send one write per click."""
+    import asyncio
+
+    AeccPowerSetpoint._DEBOUNCE_SECONDS = 0.05
+    entity = AeccPowerSetpoint(coordinator, config_entry)
+    await asyncio.gather(*(entity.async_set_native_value(w) for w in (1, 2, 3, 400)))
+    coordinator.client.set_control_parameters.assert_called_once()
+    assert _slot_power(coordinator.client) == -400
+    assert coordinator.commanded_power == 400

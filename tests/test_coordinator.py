@@ -591,6 +591,40 @@ async def test_retry_cannot_overwrite_newer_write(coordinator: AeccBatteryCoordi
     assert [c["3003"] for c in calls] == ["old", "old", "new"]
 
 
+async def test_verify_readback_runs_under_write_lock(coordinator: AeccBatteryCoordinator) -> None:
+    """A second write cannot land between a write and its verify readback.
+
+    Issue #16 diagnostics showed every readback reporting the *next*
+    command's slot value because the lock used to cover only the SET."""
+    events: list[str] = []
+
+    async def slow_set(payload):
+        events.append(f"set:{payload['3023']}")
+        return {"result": "ok"}
+
+    async def readback(_regs):
+        await asyncio.sleep(0.02)
+        events.append("verify")
+        return {"ControlInfo": {"3023": "15"}}
+
+    coordinator.client.set_control_parameters = AsyncMock(side_effect=slow_set)
+    coordinator.client.get_control_parameters = AsyncMock(side_effect=readback)
+    first = asyncio.ensure_future(coordinator._logged_write({"3023": "15"}, "min_soc(15%)"))
+    await asyncio.sleep(0.005)  # first write sent, now sleeping in its verify
+    second = asyncio.ensure_future(coordinator._logged_write({"3023": "20"}, "min_soc(20%)"))
+    await asyncio.sleep(0.01)  # second write is queued behind the first
+    third_free = asyncio.ensure_future(coordinator._logged_write({"3023": "25"}, "min_soc(25%)"))
+    assert await asyncio.gather(first, second, third_free) == [True, True, True]
+    # The first verify completes before the second SET; the second write skips
+    # its verify because the third was already waiting; the last one verifies.
+    assert events == ["set:15", "verify", "set:20", "set:25", "verify"]
+    entries = coordinator.write_history[-3:]
+    assert entries[0]["verify_result"][0]["match"] is True
+    assert entries[1]["verify_result"] is None
+    assert entries[1]["verify_skipped"] == "superseded"
+    assert entries[2]["verify_result"] is not None
+
+
 # ── Work mode ────────────────────────────────────────────────────────────────
 
 

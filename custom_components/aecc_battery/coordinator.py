@@ -143,6 +143,10 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # (stale) payload can never land after a newer command - the client's
         # io_lock only orders individual sends, not multi-attempt sequences.
         self._write_lock = asyncio.Lock()
+        # Writes in flight or waiting for the lock. When a newer write is
+        # already queued behind the one being verified, its readback would
+        # only report the newer payload, so the verify is skipped instead.
+        self._pending_writes = 0
         super().__init__(
             hass,
             _LOGGER,
@@ -616,29 +620,51 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "verify_result": None,
         }
         self._write_history.append(entry)
+        self._pending_writes += 1
+        try:
+            async with self._write_lock:
+                return await self._send_and_verify(entry, payload, operation)
+        finally:
+            self._pending_writes -= 1
+
+    async def _send_and_verify(
+        self,
+        entry: dict[str, Any],
+        payload: dict[str, str],
+        operation: str,
+    ) -> bool:
+        """Body of ``_logged_write``; runs with the write lock held.
+
+        The verify readback stays inside the lock on purpose. Issue #16
+        diagnostics showed every readback reporting the *next* command's
+        slot value: the lock used to cover only the SET, so a burst of
+        writes had each verify race the following write. Holding the lock
+        through the readback keeps the audit trail honest, and a verify is
+        skipped altogether when another write is already waiting, because
+        its result would describe that write rather than this one.
+        """
         resp: dict[str, Any] | None = None
-        async with self._write_lock:
-            for attempt in range(1 + self._WRITE_RETRY_ATTEMPTS):
-                entry["attempts"] = attempt + 1
-                resp = await self.client.set_control_parameters(payload)
-                if resp is not None:
-                    break
-                if attempt >= self._WRITE_RETRY_ATTEMPTS:
-                    break
-                if self.client.consecutive_failures >= self._WRITE_RETRY_OUTAGE_STREAK:
-                    _LOGGER.debug(
-                        "SET %s unconfirmed with device unreachable (failure streak %d) - not retrying",
-                        operation,
-                        self.client.consecutive_failures,
-                    )
-                    break
-                _LOGGER.info(
-                    "SET %s unconfirmed - re-sending (retry %d of %d)",
+        for attempt in range(1 + self._WRITE_RETRY_ATTEMPTS):
+            entry["attempts"] = attempt + 1
+            resp = await self.client.set_control_parameters(payload)
+            if resp is not None:
+                break
+            if attempt >= self._WRITE_RETRY_ATTEMPTS:
+                break
+            if self.client.consecutive_failures >= self._WRITE_RETRY_OUTAGE_STREAK:
+                _LOGGER.debug(
+                    "SET %s unconfirmed with device unreachable (failure streak %d) - not retrying",
                     operation,
-                    attempt + 1,
-                    self._WRITE_RETRY_ATTEMPTS,
+                    self.client.consecutive_failures,
                 )
-                await asyncio.sleep(self._WRITE_RETRY_DELAY_SECONDS)
+                break
+            _LOGGER.info(
+                "SET %s unconfirmed - re-sending (retry %d of %d)",
+                operation,
+                attempt + 1,
+                self._WRITE_RETRY_ATTEMPTS,
+            )
+            await asyncio.sleep(self._WRITE_RETRY_DELAY_SECONDS)
         entry["response_received"] = resp is not None
         if resp is None:
             _LOGGER.warning(
@@ -648,6 +674,13 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return False
         _LOGGER.debug("SET %s response: %s", operation, resp)
+        if self._pending_writes > 1:
+            _LOGGER.debug(
+                "SET %s: newer write queued, skipping write-back verify",
+                operation,
+            )
+            entry["verify_skipped"] = "superseded"
+            return True
         entry["verify_result"] = await self._verify_write(payload, operation)
         return True
 

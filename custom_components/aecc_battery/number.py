@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
@@ -54,9 +55,16 @@ class AeccPowerSetpoint(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity)
     _attr_native_step = 1
     _attr_mode = NumberMode.BOX
 
+    # A box input writes on every spinner click. Issue #16 diagnostics
+    # captured seventeen full register writes in eight seconds from someone
+    # stepping the value 1 W at a time. Each call waits this long and yields
+    # to a newer value that arrived meanwhile, so a burst lands as one write.
+    _DEBOUNCE_SECONDS: float = 0.4
+
     def __init__(self, coordinator: AeccBatteryCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
+        self._set_sequence = 0
         # "_power_setpoint" is historically taken by AeccPowerSlider.
         self._attr_unique_id = f"{config_entry.entry_id}_signed_power_setpoint"
         # Asymmetric bounds: HA itself rejects a command beyond either
@@ -82,6 +90,14 @@ class AeccPowerSetpoint(CoordinatorEntity[AeccBatteryCoordinator], NumberEntity)
         return self.coordinator.last_update_success
 
     async def async_set_native_value(self, value: float) -> None:
+        self._set_sequence += 1
+        sequence = self._set_sequence
+        if self._DEBOUNCE_SECONDS:
+            await asyncio.sleep(self._DEBOUNCE_SECONDS)
+        if sequence != self._set_sequence:
+            # A newer value arrived during the debounce window; that call
+            # writes, this one has nothing left to say.
+            return
         # The coordinator records direction + power + Custom mode and calls
         # async_update_listeners() on success, refreshing every entity.
         if not await self.coordinator.async_set_power_setpoint(value):
