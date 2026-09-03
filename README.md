@@ -201,6 +201,8 @@ With 2 or more units, the integration creates:
 
 **If you need to control both units**, register each battery separately in the vendor app instead of pairing them, so each gets its own IP and answers on port 8080. Add the integration once per battery and send each entry its share of the target. One owner runs this with an automation writing half the target to each unit ([#16](https://github.com/StekkerDeal/aecc-battery-local/issues/16)). Totals then come from Home Assistant rather than from the master. This is the supported way to control a multi-unit system today.
 
+Keep both units in **Custom / Manual** with your automation as the only thing deciding power. Never leave two separately registered units in Self-Consumption on the same meter: each tries to zero the same reading without knowing the other exists, and they end up charging and discharging against each other at full power.
+
 Single-unit systems are unaffected (no child devices). If you add or remove a battery from the stack, **reload the integration** to refresh the device list.
 
 ---
