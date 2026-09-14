@@ -133,9 +133,9 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # for the hybrid hold-then-unavailable behavior in AeccSensor.
         self._cleaner_last_accepted: dict[str, float] = {}
         self._cleaner_last_accepted_at: dict[str, float] = {}
-        # Valid polls seen since setup, for cleaners that need to distinguish
-        # the device's warm-up frame from a steady reading.
-        self._polls_since_setup = 0
+        # When the first valid frame arrived, for cleaners that need to
+        # distinguish the device's warm-up frame from a steady reading.
+        self._first_poll_at: float | None = None
         # Rolling audit trail of recent control writes. Surfaced through
         # diagnostics so we can correlate user-reported misbehaviour with
         # the exact register payloads sent and the post-write verify
@@ -464,15 +464,16 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if cleaner is None:
             return raw_value
 
+        now = time.time()
         ctx = CleanerContext(
             key=canonical_key,
             raw_value=raw_value,
             last_accepted_value=self._cleaner_last_accepted.get(canonical_key),
             last_accepted_at=self._cleaner_last_accepted_at.get(canonical_key),
-            now=time.time(),
+            now=now,
             wall_power_w=self._wall_power_signal_w(),
             profile=self.brand_profile,
-            polls_since_setup=self._polls_since_setup,
+            seconds_since_first_poll=self._seconds_since_first_poll(now),
         )
         cleaned = cleaner(ctx)
         if cleaned is None:
@@ -492,7 +493,13 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def note_poll(self) -> None:
         """Record that a valid frame arrived. One call per poll, not per value."""
-        self._polls_since_setup += 1
+        if self._first_poll_at is None:
+            self._first_poll_at = time.time()
+
+    def _seconds_since_first_poll(self, now: float) -> float | None:
+        if self._first_poll_at is None:
+            return None
+        return now - self._first_poll_at
 
     def cleaner_last_accepted_at(self, canonical_key: str) -> float | None:
         """Last epoch-second timestamp when this key passed the cleaner.

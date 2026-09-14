@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.aecc_battery.cleaners import SOC_ZERO_WARMUP_POLLS
+from custom_components.aecc_battery.cleaners import SOC_ZERO_WARMUP_SECONDS
 from custom_components.aecc_battery.const import (
     BRAND_PROFILES,
     REG_MAX_SOC,
@@ -96,14 +96,28 @@ def test_first_frame_soc_zero_during_active_flow_is_rejected(
     assert tsun_coordinator.get_value("battery_soc") is None
 
 
+def test_warm_up_outlasting_a_few_polls_is_still_withheld(
+    tsun_coordinator: AeccBatteryCoordinator,
+) -> None:
+    """The measured warm-up ran past three polls, which is what made 1.6.2 publish it."""
+    tsun_coordinator.data = {
+        "Storage_list": [{"BatterySoc": "0", "AcChargingPower": "0", "BatteryDischargingPower": "0"}],
+        "SSumInfoList": {},
+    }
+    tsun_coordinator.note_poll()
+    tsun_coordinator._first_poll_at = time.time() - 20
+
+    assert tsun_coordinator.get_value("battery_soc") is None
+
+
 def test_an_empty_pack_still_publishes_zero(tsun_coordinator: AeccBatteryCoordinator) -> None:
     """A pack that really is at 0 keeps saying so, and must not stay hidden."""
     tsun_coordinator.data = {
         "Storage_list": [{"BatterySoc": "0", "AcChargingPower": "0", "BatteryDischargingPower": "0"}],
         "SSumInfoList": {},
     }
-    for _ in range(SOC_ZERO_WARMUP_POLLS + 1):
-        tsun_coordinator.note_poll()
+    tsun_coordinator.note_poll()
+    tsun_coordinator._first_poll_at = time.time() - (SOC_ZERO_WARMUP_SECONDS + 1)
 
     assert tsun_coordinator.get_value("battery_soc") == 0.0
 
