@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.aecc_battery.cleaners import SOC_ZERO_WARMUP_POLLS
 from custom_components.aecc_battery.const import (
     BRAND_PROFILES,
     REG_MAX_SOC,
@@ -42,6 +43,69 @@ def lunergy_coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordina
     coord._WRITE_VERIFY_DELAY_SECONDS = 0
     coord._WRITE_RETRY_DELAY_SECONDS = 0
     return coord
+
+
+@pytest.fixture
+def tsun_coordinator(hass: HomeAssistant, mock_client) -> AeccBatteryCoordinator:
+    """Coordinator on the permissive profile, where the warm-up frame showed up."""
+    coord = AeccBatteryCoordinator(
+        hass,
+        mock_client,
+        device_name="Test TSUN",
+        manufacturer="TSUN",
+        model="MAU5000",
+        brand_profile=BRAND_PROFILES["TSUN"],
+    )
+    coord._WRITE_VERIFY_DELAY_SECONDS = 0
+    coord._WRITE_RETRY_DELAY_SECONDS = 0
+    return coord
+
+
+# ── The first frame after a reload ───────────────────────────────────────────
+
+
+def test_first_frame_soc_zero_is_withheld(tsun_coordinator: AeccBatteryCoordinator) -> None:
+    """The warm-up frame reports SoC 0 with every power field at 0.
+
+    Nothing in that frame contradicts the 0, so the active-flow check cannot
+    catch it, and with no history there is nothing else to compare against.
+    Publishing it poisons the rate check for minutes afterwards.
+    """
+    tsun_coordinator.data = {
+        "Storage_list": [{"BatterySoc": "0", "AcChargingPower": "0", "BatteryDischargingPower": "0"}],
+        "SSumInfoList": {},
+    }
+    assert tsun_coordinator.get_value("battery_soc") is None
+
+    # The real reading arrives on the next poll and publishes immediately.
+    tsun_coordinator.data = {
+        "Storage_list": [{"BatterySoc": "26", "AcChargingPower": "6010"}],
+        "SSumInfoList": {},
+    }
+    assert tsun_coordinator.get_value("battery_soc") == 26.0
+
+
+def test_first_frame_soc_zero_during_active_flow_is_rejected(
+    tsun_coordinator: AeccBatteryCoordinator,
+) -> None:
+    """SoC 0 against measured flow is rejected with no history to lean on."""
+    tsun_coordinator.data = {
+        "Storage_list": [{"BatterySoc": "0", "AcChargingPower": "6010"}],
+        "SSumInfoList": {},
+    }
+    assert tsun_coordinator.get_value("battery_soc") is None
+
+
+def test_an_empty_pack_still_publishes_zero(tsun_coordinator: AeccBatteryCoordinator) -> None:
+    """A pack that really is at 0 keeps saying so, and must not stay hidden."""
+    tsun_coordinator.data = {
+        "Storage_list": [{"BatterySoc": "0", "AcChargingPower": "0", "BatteryDischargingPower": "0"}],
+        "SSumInfoList": {},
+    }
+    for _ in range(SOC_ZERO_WARMUP_POLLS + 1):
+        tsun_coordinator.note_poll()
+
+    assert tsun_coordinator.get_value("battery_soc") == 0.0
 
 
 # ── get_value cleaning ───────────────────────────────────────────────────────

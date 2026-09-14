@@ -22,7 +22,8 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
     KNOWN_BRANDS,
-    MAX_BATTERY_POWER_W,
+    MAX_BRAND_POWER_W,
+    max_power_for_brand,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,7 +86,19 @@ class AeccBatteryOptionsFlow(config_entries.OptionsFlow):
         self._entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+        brand = (user_input or self._entry.data).get(CONF_MANUFACTURER)
+        brand_max = max_power_for_brand(brand)
+
         if user_input is not None:
+            # The schema accepts the highest ceiling any brand has, so the brand
+            # and its own limit can be changed in one save; the brand's ceiling
+            # is enforced here.
+            for field in (CONF_MAX_CHARGE_POWER, CONF_MAX_DISCHARGE_POWER):
+                if user_input[field] > brand_max:
+                    errors[field] = "power_above_brand_max"
+
+        if user_input is not None and not errors:
             # Merge instead of replace: async_create_entry swaps entry.options
             # wholesale, so the legacy extended_power boolean must be carried
             # over explicitly - a rollback to <=1.5.1 then keeps its old
@@ -114,9 +127,13 @@ class AeccBatteryOptionsFlow(config_entries.OptionsFlow):
         # sibling modules at setup).
         from . import resolve_power_limits
 
-        current = self._entry.data
+        # A rejected submit is shown back with what was typed, not with the
+        # stored values.
+        current = {**self._entry.data, **(user_input or {})}
         charge_default, discharge_default = resolve_power_limits(self._entry.options)
-        power_field = vol.All(vol.Coerce(int), vol.Range(min=100, max=MAX_BATTERY_POWER_W))
+        charge_default = current.get(CONF_MAX_CHARGE_POWER, charge_default)
+        discharge_default = current.get(CONF_MAX_DISCHARGE_POWER, discharge_default)
+        power_field = vol.All(vol.Coerce(int), vol.Range(min=100, max=MAX_BRAND_POWER_W))
         schema = vol.Schema(
             {
                 vol.Required(CONF_HOST, default=current.get(CONF_HOST, DEFAULT_HOST)): str,
@@ -130,4 +147,9 @@ class AeccBatteryOptionsFlow(config_entries.OptionsFlow):
                 vol.Required(CONF_MAX_DISCHARGE_POWER, default=discharge_default): power_field,
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"brand_max": str(brand_max)},
+        )

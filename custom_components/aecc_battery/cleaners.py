@@ -31,6 +31,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+# How many polls a SOC of 0 is withheld for when there is no accepted value to
+# judge it against. The first frame after a reload can report 0 with every
+# power field also at 0, which no physics check can contradict. A pack that is
+# genuinely empty keeps reporting 0 and publishes once this many polls pass.
+SOC_ZERO_WARMUP_POLLS = 3
+
 
 @dataclass
 class CleanerContext:
@@ -48,19 +54,27 @@ class CleanerContext:
     now: float  # epoch seconds of the current poll
     wall_power_w: float | None  # signed; positive = charging, negative = discharging
     profile: dict[str, Any]
+    # Valid polls since setup. Counts polls, not get_value calls, which several
+    # entities make per poll.
+    polls_since_setup: int = 0
 
 
 def clean_soc(ctx: CleanerContext) -> float | None:
     """Reject SOC readings that contradict observable physics.
 
-    Two checks, both relative to the per-brand profile:
+    Three checks, the first two relative to the per-brand profile:
 
     1. **Zero-during-active-flow**: a SOC of 0 while the wall-side power
        shows the battery actively cycling (above the configured threshold)
        is a sensor glitch. The cell does not collapse to 0 in a single poll
        interval. Reject and let the entity hold its previous value.
 
-    2. **Impossible rate of change**: a SOC change exceeding
+    2. **Zero with nothing to check it against**: a SOC of 0 in the first
+       polls after setup, with no accepted value yet. Withheld for
+       ``SOC_ZERO_WARMUP_POLLS`` polls, because publishing it makes 0 the
+       baseline for the rate check and hides the true value for minutes.
+
+    3. **Impossible rate of change**: a SOC change exceeding
        ``soc_max_rate_pct_per_min`` since the last accepted sample is
        physically impossible (a 2.4 kWh battery at full 2.4 kW shifts SOC
        by ~1.7%/min at most; >5%/min is always a glitch). Reject.
@@ -75,6 +89,15 @@ def clean_soc(ctx: CleanerContext) -> float | None:
     if raw == 0 and ctx.wall_power_w is not None:
         if abs(ctx.wall_power_w) > threshold_w:
             return None
+
+    # The first frames after a reload can carry SOC 0 with every power field
+    # also at 0, so the check above has nothing to reject it with and there is
+    # no history either. Withhold it briefly rather than publish it: an
+    # accepted 0 becomes the baseline for the rate check below and suppresses
+    # the true value for minutes. An empty pack keeps reporting 0 and
+    # publishes once the window passes.
+    if raw == 0 and ctx.last_accepted_value is None and ctx.polls_since_setup <= SOC_ZERO_WARMUP_POLLS:
+        return None
 
     if ctx.last_accepted_value is not None and ctx.last_accepted_at is not None and ctx.now > ctx.last_accepted_at:
         elapsed_seconds = ctx.now - ctx.last_accepted_at

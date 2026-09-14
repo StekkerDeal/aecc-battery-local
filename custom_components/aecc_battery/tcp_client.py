@@ -38,12 +38,12 @@ class AeccTcpClient:
         self._serial = 0
         self._connected = False
         self._io_lock = asyncio.Lock()
-        # Consecutive GET read timeouts (device connected but silent). After
-        # READ_TIMEOUT_SUSPECT_THRESHOLD we recycle the possibly half-open socket.
-        self._read_timeout_streak = 0
 
     async def async_connect(self) -> None:
-        await self._manager._connect()
+        # get_reader_writer() reuses a live socket where _connect() replaced it.
+        # Setup calls this twice per attempt, so bypassing the guard leaked one
+        # socket each time.
+        await self._manager.get_reader_writer()
         self._connected = True
         self._manager.note_success()
 
@@ -142,7 +142,7 @@ class AeccTcpClient:
                 await writer.drain()
                 result = await self._read_json(reader)
                 self._manager.note_success()
-                self._read_timeout_streak = 0
+                self._manager.reset_read_timeout_streak()
                 return result
             except _ReadTimeout:
                 await self._handle_read_timeout("GET", command)
@@ -172,7 +172,7 @@ class AeccTcpClient:
                 response = await self._read_json(reader)
                 _LOGGER.debug("RX SET <- %s", response)
                 self._manager.note_success()
-                self._read_timeout_streak = 0
+                self._manager.reset_read_timeout_streak()
                 return response
             except _ReadTimeout:
                 await self._handle_read_timeout("SET", command)
@@ -217,16 +217,16 @@ class AeccTcpClient:
         ``READ_TIMEOUT_SUSPECT_THRESHOLD`` consecutive timeouts do we close the
         socket so the next request reconnects lazily.
         """
-        self._read_timeout_streak += 1
-        if self._read_timeout_streak >= READ_TIMEOUT_SUSPECT_THRESHOLD:
+        streak = self._manager.note_read_timeout()
+        if streak >= READ_TIMEOUT_SUSPECT_THRESHOLD:
             _LOGGER.warning(
                 "%s %s: %d consecutive read timeouts - recycling socket",
                 op,
                 command,
-                self._read_timeout_streak,
+                streak,
             )
             await self._manager.close()
-            self._read_timeout_streak = 0
+            self._manager.reset_read_timeout_streak()
 
     async def _read_json(self, reader: asyncio.StreamReader) -> dict[str, Any]:
         buffer = b""

@@ -36,6 +36,9 @@ class TCPClientManager:
         self._base_cooldown = base_cooldown
         self._max_cooldown = max_cooldown
         self._consecutive_failures = 0
+        # Consecutive silent reads. Lives here, with the socket it describes,
+        # because callers are rebuilt per setup attempt while this is not.
+        self._read_timeout_streak = 0
 
     # ── Factory ──────────────────────────────────────────────────────────────
 
@@ -70,6 +73,12 @@ class TCPClientManager:
             return self.reader, self.writer
 
     async def _connect(self) -> None:
+        # Close the previous socket first. Some firmware serves one client at a
+        # time, and there an abandoned socket keeps the session and locks out
+        # every later one. Callers already hold _lock, so close() is called
+        # directly; taking the lock here would deadlock reconnect().
+        if self.writer is not None:
+            await self.close()
         try:
             _LOGGER.info("Connecting to %s:%s (timeout=%ss)", self.host, self.port, self.timeout)
             self.reader, self.writer = await asyncio.wait_for(
@@ -124,3 +133,18 @@ class TCPClientManager:
 
     def note_success(self) -> None:
         self._consecutive_failures = 0
+
+    # ── Read-timeout streak ───────────────────────────────────────────────────
+
+    @property
+    def read_timeout_streak(self) -> int:
+        """Consecutive silent reads on this connection (0 = healthy)."""
+        return self._read_timeout_streak
+
+    def note_read_timeout(self) -> int:
+        """Record a silent read and return the new streak."""
+        self._read_timeout_streak += 1
+        return self._read_timeout_streak
+
+    def reset_read_timeout_streak(self) -> None:
+        self._read_timeout_streak = 0

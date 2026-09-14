@@ -7,7 +7,7 @@
 
 A Home Assistant integration for **local TCP control** of AECC-platform home batteries. No cloud, no latency, no external dependencies.
 
-Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, AFERIY, AccuMate, JET, Oscal, Fossibot, and others.
+Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, AEG Solarcube, AFERIY, AccuMate, JET, Oscal, Fossibot, TSUN, and others.
 
 ---
 
@@ -55,6 +55,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | **JET** | GreenARK Pro | Fully tested | Tested on a loan unit |
 | **Oscal** | Power Storage 2000 | Community confirmed | Per-string PV sensors read 0 W on this firmware |
 | **Fossibot** | FBP 1200 | Community confirmed | Per-unit charging power and per-string PV read 0 W on this firmware |
+| **TSUN** | PowerTrunk MAU5000 | Fully tested | Supports 2500 W; reconnect needs a device restart ([details](#troubleshooting)) |
 
 ### Expected Compatible (Untested)
 
@@ -113,10 +114,12 @@ You can update all settings at any time via the integration's **Configure** butt
 
 ### Power Limits
 
-By default, the integration limits both charging and discharging to **800W**. The hardware supports up to 2400W, and since charging and discharging have different constraints (feed-in rules and house wiring apply to *output* only), the limits are configured **per direction** via the integration's **Configure** button:
+By default, the integration limits both charging and discharging to **800W**. Most AECC hardware supports up to 2400W, and since charging and discharging have different constraints (feed-in rules and house wiring apply to *output* only), the limits are configured **per direction** via the integration's **Configure** button:
 
 - **Max charge power** (100-2400W): the highest charging power the integration will command. Charging draws from the grid, so no feed-in limits apply.
 - **Max discharge power** (100-2400W): the highest discharging power the integration will command.
+
+The ceiling follows the selected brand. Brands rated above 2400W accept more (**TSUN: 2500W**); asking for more than the selected brand is rated for is refused in the Configure dialog, so a 2400W unit cannot be set to 2500W by picking the wrong brand.
 
 All control paths enforce these limits: the Power Setpoint entity gets matching bounds (e.g. -800 to +2400 for an 800W discharge / 2400W charge configuration), and out-of-range slider or automation commands are clamped with a warning in the log.
 
@@ -140,8 +143,11 @@ The integration applies a small physics-aware filter before publishing readings 
 |---|---|
 | Zero-during-active-flow | `SOC=0` (or `power=0` on Lunergy) while the battery is clearly cycling |
 | Rate-of-change | SOC changes faster than physically possible from one poll to the next |
+| Unconfirmed zero at startup | `SOC=0` in the first few polls after a reload, before there is any accepted reading to weigh it against |
 
 When a reading is rejected, the entity holds its last known good value for up to **2 minutes** so brief blips don't break charts or automations. After that window the entity transitions to `unavailable` so prolonged sensor failures surface honestly. As soon as the cleaner accepts a reading again, the entity returns to normal.
+
+The startup check exists because the first frame after a reload sometimes arrives with the battery reported idle and every field at zero, which no physics check can contradict. Publishing that `0` would make it the baseline for the rate check and hide the true SOC for minutes afterwards. A pack that really is empty keeps reporting `0` and publishes within a few polls.
 
 **Per-brand thresholds.** The brand you select during setup determines the cleaning sensitivity. **Lunergy** gets the strictest profile (the SOC-stuck-at-zero pattern is documented on this device). **Sunpura, Voltdeer, and AEG** get a permissive profile that only catches obvious physical impossibilities. **Other** uses a conservative middle setting. No user-facing configuration is needed.
 
@@ -323,6 +329,12 @@ The integration writes the same registers as the official AECC app, but differen
 **Energy sensors show 0 kWh after restart**
 - On first install, sensors start at 0 and accumulate
 - After restart, last known values are restored automatically
+
+**Entities stay "Unavailable" after a reload, a Home Assistant restart, or a battery reboot**
+- Some firmware hands out its single local session only during a short window, roughly 30 seconds, after the device's own datalogger restarts. Outside that window it still completes TCP handshakes but answers nobody, so the integration connects and then waits forever for a reply.
+- This is a device limitation, not something the integration can retry its way out of: once the connection drops for any reason, the next attempt needs a fresh device restart to land. The retry backoff grows to 30 to 80 seconds, which almost never falls inside the window.
+- Recovery is to restart the device and reload the integration inside the window, rather than waiting: trigger the restart, then within about 20 seconds use **Settings → Devices & Services → AECC Battery → ⋮ → Reload**.
+- Confirmed on the TSUN PowerTrunk MAU5000 (firmware 1.4.9.9.5). The other brands listed above reconnect normally, so treat this as per-firmware rather than a property of the platform.
 
 ### Filing a bug report
 

@@ -81,6 +81,16 @@ def test_get_instance_does_not_mutate_existing_cooldown() -> None:
 # ── Lock-safe reconnect ─────────────────────────────────────────────────────────
 
 
+async def test_connect_closes_the_previous_socket(socket_tracker) -> None:
+    """_connect must close what it holds before opening the next one."""
+    m = TCPClientManager("h", 1)
+
+    await m._connect()
+    await m._connect()
+
+    assert socket_tracker.events == ["open", "close", "open"]
+
+
 async def test_reconnect_connects_without_deadlock(monkeypatch) -> None:
     reader, writer = _make_rw()
     monkeypatch.setattr(asyncio, "open_connection", AsyncMock(return_value=(reader, writer)))

@@ -43,14 +43,15 @@
           "max_discharge_power": "Max discharge power (W)"
         },
         "data_description": {
-          "max_charge_power": "Highest charging power the integration will command (100-2400W, default 800W). Charging draws from the grid, so feed-in limits do not apply.",
-          "max_discharge_power": "Highest discharging power the integration will command (100-2400W, default 800W). For output above 800W the device's own 'On Grid Output' setting in the vendor app must also be raised."
+          "max_charge_power": "Highest charging power the integration will command (100-2400W, 2500W on TSUN; default 800W). Charging draws from the grid, so feed-in limits do not apply.",
+          "max_discharge_power": "Highest discharging power the integration will command (100-2400W, 2500W on TSUN; default 800W). For output above 800W the device's own 'On Grid Output' setting in the vendor app must also be raised."
         }
       }
     },
     "error": {
       "cannot_connect": "Cannot connect - check the IP, port, and that the battery is online.",
-      "unknown": "Unexpected error - see the Home Assistant log for details."
+      "unknown": "Unexpected error - see the Home Assistant log for details.",
+      "power_above_brand_max": "This brand is rated up to {brand_max}W. Lower the limit, or select the brand that matches your battery."
     }
   },
   "exceptions": {

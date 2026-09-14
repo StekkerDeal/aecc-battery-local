@@ -121,7 +121,7 @@ async def test_read_timeout_below_threshold_no_recycle(monkeypatch, recorded_sle
     assert await client.send_get("EnergyParameter") is None
 
     client._manager.close.assert_not_called()
-    assert client._read_timeout_streak == 2
+    assert client._manager.read_timeout_streak == 2
     assert client._manager._consecutive_failures == 0  # timeouts are not connection errors
 
 
@@ -135,7 +135,7 @@ async def test_read_timeout_at_threshold_recycles(monkeypatch, recorded_sleeps) 
         assert await client.send_get("EnergyParameter") is None
 
     client._manager.close.assert_awaited_once()
-    assert client._read_timeout_streak == 0  # reset after recycle
+    assert client._manager.read_timeout_streak == 0  # reset after recycle
 
 
 async def test_slow_but_healthy_never_recycles(monkeypatch, recorded_sleeps) -> None:
@@ -151,7 +151,7 @@ async def test_slow_but_healthy_never_recycles(monkeypatch, recorded_sleeps) -> 
         await client.send_get("EnergyParameter")
 
     client._manager.close.assert_not_called()
-    assert client._read_timeout_streak == 0
+    assert client._manager.read_timeout_streak == 0
 
 
 # ── DeviceManagement hardening ─────────────────────────────────────────────────

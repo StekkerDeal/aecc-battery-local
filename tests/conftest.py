@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +20,59 @@ from custom_components.aecc_battery.const import (
 def auto_enable_custom_integrations(enable_custom_integrations):
     """Enable loading custom_components in all tests."""
     yield
+
+
+class SocketTracker:
+    """Counting fake for ``asyncio.open_connection``.
+
+    Tracks how many sockets are alive at once, which the other fakes here do
+    not. The reader raises TimeoutError on first read: a device that completes
+    the handshake and then never answers.
+    """
+
+    def __init__(self) -> None:
+        # Ordered log, so a test can assert each socket closed before the next.
+        self.events: list[str] = []
+        self.live = 0
+        self.max_live = 0
+
+    @property
+    def opened(self) -> int:
+        return self.events.count("open")
+
+    @property
+    def closed(self) -> int:
+        return self.events.count("close")
+
+    async def open_connection(self, host: str, port: int):
+        self.events.append("open")
+        self.live += 1
+        self.max_live = max(self.max_live, self.live)
+
+        reader = AsyncMock(spec=asyncio.StreamReader)
+        reader.read = AsyncMock(side_effect=TimeoutError)
+        writer = MagicMock(spec=asyncio.StreamWriter)
+        writer.is_closing.return_value = False
+        writer.drain = AsyncMock()
+        writer.wait_closed = AsyncMock()
+
+        def _close() -> None:
+            if writer.is_closing():
+                return
+            writer.is_closing.return_value = True
+            self.events.append("close")
+            self.live -= 1
+
+        writer.close.side_effect = _close
+        return reader, writer
+
+
+@pytest.fixture
+def socket_tracker(monkeypatch) -> SocketTracker:
+    """Replace asyncio.open_connection with a tracker that counts sockets."""
+    tracker = SocketTracker()
+    monkeypatch.setattr(asyncio, "open_connection", tracker.open_connection)
+    return tracker
 
 
 @pytest.fixture

@@ -48,8 +48,21 @@ KNOWN_BRANDS = [
     "JET",
     "Oscal",
     "Fossibot",
+    "TSUN",
     "Other",
 ]
+
+# Brands whose hardware is rated above the common 2400W. The options form offers
+# the highest of these and rejects anything over the selected brand's own
+# ceiling, so a 2400W unit can never be asked for more.
+BRAND_MAX_POWER_W: dict[str, int] = {"TSUN": 2500}
+MAX_BRAND_POWER_W = max([MAX_BATTERY_POWER_W, *BRAND_MAX_POWER_W.values()])
+
+
+def max_power_for_brand(manufacturer: str | None) -> int:
+    """Highest power (W) the integration will offer for this brand."""
+    return BRAND_MAX_POWER_W.get(manufacturer or "", MAX_BATTERY_POWER_W)
+
 
 # Brand whose firmware needs a different control-slot encoding (see REG_CONTROL_TIME1
 # comment below and async_set_battery_control). Gate AEG-specific behaviour on this.
@@ -116,6 +129,11 @@ BRAND_PROFILES: dict[str, dict[str, float | int]] = {
         "hold_last_value_seconds": 120,
     },
     "Fossibot": {
+        "soc_zero_reject_during_active_w": 200,
+        "soc_max_rate_pct_per_min": 10.0,
+        "hold_last_value_seconds": 120,
+    },
+    "TSUN": {
         "soc_zero_reject_during_active_w": 200,
         "soc_max_rate_pct_per_min": 10.0,
         "hold_last_value_seconds": 120,

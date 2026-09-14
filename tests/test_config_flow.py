@@ -139,3 +139,62 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     # The legacy boolean survives the save (options are replaced wholesale by
     # HA, so the flow must merge it) - a rollback to <=1.5.1 keeps 2400W.
     assert entry.options[CONF_EXTENDED_POWER] is True
+
+
+# ── Per-brand power ceiling ───────────────────────────────────────────────────
+
+
+async def _entry_via_user_flow(hass: HomeAssistant):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], MOCK_USER_INPUT)
+    return result["result"]
+
+
+_OPTIONS_INPUT = {
+    CONF_HOST: "192.168.1.100",
+    CONF_PORT: 8080,
+    CONF_NAME: "My Battery",
+    CONF_MODEL: "MAU5000",
+}
+
+
+async def test_options_flow_allows_2500_on_tsun(hass: HomeAssistant) -> None:
+    """A brand rated above 2400W can be set to its own ceiling in one save."""
+    entry = await _entry_via_user_flow(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            **_OPTIONS_INPUT,
+            CONF_MANUFACTURER: "TSUN",
+            CONF_MAX_CHARGE_POWER: 2500,
+            CONF_MAX_DISCHARGE_POWER: 2500,
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.data[CONF_MANUFACTURER] == "TSUN"
+    assert entry.options[CONF_MAX_CHARGE_POWER] == 2500
+    assert entry.options[CONF_MAX_DISCHARGE_POWER] == 2500
+
+
+async def test_options_flow_rejects_above_brand_ceiling(hass: HomeAssistant) -> None:
+    """The same value on a 2400W brand is refused, and nothing is saved."""
+    entry = await _entry_via_user_flow(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            **_OPTIONS_INPUT,
+            CONF_MANUFACTURER: "Sunpura",
+            CONF_MAX_CHARGE_POWER: 2500,
+            CONF_MAX_DISCHARGE_POWER: 800,
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_MAX_CHARGE_POWER: "power_above_brand_max"}
+    assert result["description_placeholders"] == {"brand_max": "2400"}
+    assert CONF_MAX_CHARGE_POWER not in entry.options

@@ -43,14 +43,15 @@
           "max_discharge_power": "Puissance de décharge max (W)"
         },
         "data_description": {
-          "max_charge_power": "Puissance de charge maximale commandée par l'intégration (100-2400W, 800W par défaut). La charge provient du réseau, les limites d'injection ne s'appliquent pas.",
-          "max_discharge_power": "Puissance de décharge maximale commandée par l'intégration (100-2400W, 800W par défaut). Au-delà de 800W, le paramètre 'On Grid Output' de l'application du fabricant doit aussi être augmenté."
+          "max_charge_power": "Puissance de charge maximale commandée par l'intégration (100-2400W, 2500W sur TSUN ; 800W par défaut). La charge provient du réseau, les limites d'injection ne s'appliquent pas.",
+          "max_discharge_power": "Puissance de décharge maximale commandée par l'intégration (100-2400W, 2500W sur TSUN ; 800W par défaut). Au-delà de 800W, le paramètre 'On Grid Output' de l'application du fabricant doit aussi être augmenté."
         }
       }
     },
     "error": {
       "cannot_connect": "Connexion impossible. Vérifiez l'adresse IP, le port et que la batterie est en ligne.",
-      "unknown": "Erreur inattendue. Consultez le journal Home Assistant pour plus de détails."
+      "unknown": "Erreur inattendue. Consultez le journal Home Assistant pour plus de détails.",
+      "power_above_brand_max": "Cette marque est prévue jusqu'à {brand_max}W. Réduisez la limite ou sélectionnez la marque correspondant à votre batterie."
     }
   },
   "exceptions": {

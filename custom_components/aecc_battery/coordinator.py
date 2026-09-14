@@ -133,6 +133,9 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # for the hybrid hold-then-unavailable behavior in AeccSensor.
         self._cleaner_last_accepted: dict[str, float] = {}
         self._cleaner_last_accepted_at: dict[str, float] = {}
+        # Valid polls seen since setup, for cleaners that need to distinguish
+        # the device's warm-up frame from a steady reading.
+        self._polls_since_setup = 0
         # Rolling audit trail of recent control writes. Surfaced through
         # diagnostics so we can correlate user-reported misbehaviour with
         # the exact register payloads sent and the post-write verify
@@ -235,6 +238,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
         self._consecutive_failures = 0
+        self.note_poll()
 
         suspect_reason = self._frame_suspect_reason(raw)
         if suspect_reason is not None:
@@ -468,6 +472,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             now=time.time(),
             wall_power_w=self._wall_power_signal_w(),
             profile=self.brand_profile,
+            polls_since_setup=self._polls_since_setup,
         )
         cleaned = cleaner(ctx)
         if cleaned is None:
@@ -484,6 +489,10 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cleaner_last_accepted[canonical_key] = cleaned
         self._cleaner_last_accepted_at[canonical_key] = ctx.now
         return cleaned
+
+    def note_poll(self) -> None:
+        """Record that a valid frame arrived. One call per poll, not per value."""
+        self._polls_since_setup += 1
 
     def cleaner_last_accepted_at(self, canonical_key: str) -> float | None:
         """Last epoch-second timestamp when this key passed the cleaner.
