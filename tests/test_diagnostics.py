@@ -58,12 +58,15 @@ async def test_diagnostics_returns_all_top_level_sections(hass: HomeAssistant, s
         "config",
         "live_state",
         "cleaner_state",
+        "modbus",
         "last_poll",
         "control_registers",
         "write_history",
     }
     assert diag["integration"]["domain"] == DOMAIN
     assert diag["integration"]["version"]  # version resolved from manifest
+    assert diag["modbus"]["supported"] is None
+    assert diag["modbus"]["values"] == {}
 
 
 async def test_diagnostics_register_dump_populated(hass: HomeAssistant, stored_entry) -> None:

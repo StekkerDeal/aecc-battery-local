@@ -129,6 +129,7 @@ def mock_tcp_client():
         )
         client.set_control_parameters = AsyncMock(return_value={"result": "ok"})
         client.get_device_management_info = AsyncMock(return_value=None)
+        client.read_holding_registers = AsyncMock(return_value=None)
         yield client
 
 

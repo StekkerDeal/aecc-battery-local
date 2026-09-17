@@ -15,6 +15,7 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfEnergy,
     UnitOfPower,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -23,7 +24,20 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.dt import utcnow
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    MB_ALARM_FLAGS,
+    MB_AVAILABLE_CHARGE_POWER,
+    MB_ENERGY_CHARGED,
+    MB_ENERGY_DISCHARGED,
+    MB_ENERGY_TO_GRID,
+    MB_NOMINAL_BATTERY_POWER,
+    MB_NOMINAL_POWER,
+    MB_TEMP_1,
+    MB_TEMP_2,
+    MB_TEMP_3,
+    MODBUS_REGISTERS,
+)
 from .coordinator import AeccBatteryCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -77,6 +91,81 @@ _ENERGY_SENSORS = [
 
 _MAX_GAP_SECONDS = 60
 
+# ── Modbus telemetry sensors (only on devices that answer the map) ────────────
+# (key, name, register, unit, device_class, state_class, entity_category, icon)
+_TEMP = UnitOfTemperature.CELSIUS
+_DIAG = EntityCategory.DIAGNOSTIC
+_MEAS = SensorStateClass.MEASUREMENT
+_TOTAL = SensorStateClass.TOTAL_INCREASING
+_MODBUS_SENSORS = [
+    ("temperature_1", "Temperature 1", MB_TEMP_1, _TEMP, SensorDeviceClass.TEMPERATURE, _MEAS, _DIAG, None),
+    ("temperature_2", "Temperature 2", MB_TEMP_2, _TEMP, SensorDeviceClass.TEMPERATURE, _MEAS, _DIAG, None),
+    ("temperature_3", "Temperature 3", MB_TEMP_3, _TEMP, SensorDeviceClass.TEMPERATURE, _MEAS, _DIAG, None),
+    # Lifetime counters count at the battery, behind the inverter, so they are
+    # not Energy Dashboard inputs; the integrated energy sensors above are.
+    (
+        "lifetime_energy_charged",
+        "Lifetime Energy Charged",
+        MB_ENERGY_CHARGED,
+        UnitOfEnergy.KILO_WATT_HOUR,
+        SensorDeviceClass.ENERGY,
+        _TOTAL,
+        None,
+        "mdi:battery-charging",
+    ),
+    (
+        "lifetime_energy_discharged",
+        "Lifetime Energy Discharged",
+        MB_ENERGY_DISCHARGED,
+        UnitOfEnergy.KILO_WATT_HOUR,
+        SensorDeviceClass.ENERGY,
+        _TOTAL,
+        None,
+        "mdi:battery-arrow-down-outline",
+    ),
+    (
+        "lifetime_energy_to_grid",
+        "Lifetime Energy to Grid",
+        MB_ENERGY_TO_GRID,
+        UnitOfEnergy.KILO_WATT_HOUR,
+        SensorDeviceClass.ENERGY,
+        _TOTAL,
+        None,
+        "mdi:transmission-tower-export",
+    ),
+    (
+        "available_charge_power",
+        "Available Charge Power",
+        MB_AVAILABLE_CHARGE_POWER,
+        UnitOfPower.WATT,
+        SensorDeviceClass.POWER,
+        _MEAS,
+        None,
+        "mdi:battery-arrow-up-outline",
+    ),
+    (
+        "nominal_power",
+        "Nominal Power",
+        MB_NOMINAL_POWER,
+        UnitOfPower.WATT,
+        SensorDeviceClass.POWER,
+        None,
+        _DIAG,
+        "mdi:gauge",
+    ),
+    (
+        "nominal_battery_power",
+        "Nominal Battery Power",
+        MB_NOMINAL_BATTERY_POWER,
+        UnitOfPower.WATT,
+        SensorDeviceClass.POWER,
+        None,
+        _DIAG,
+        "mdi:gauge",
+    ),
+    ("alarm_flags", "Alarm Flags", MB_ALARM_FLAGS, None, None, None, _DIAG, "mdi:alert-circle-outline"),
+]
+
 
 def _derive_status(charge: float, ac_charge: float, discharge: float) -> str:
     if charge > 0 or ac_charge > 0:
@@ -107,6 +196,10 @@ async def async_setup_entry(
 
     if coordinator.wifi_rssi is not None:
         entities.append(AeccWifiSignalSensor(coordinator, config_entry))
+
+    if coordinator.modbus_supported:
+        for spec in _MODBUS_SENSORS:
+            entities.append(AeccModbusSensor(coordinator, config_entry, *spec))
 
     # Multi-unit systems: one child device per battery (controls stay hub-only;
     # the protocol has no per-unit control).
@@ -494,3 +587,52 @@ class AeccWifiSignalSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEnti
     @property
     def native_value(self) -> int | None:
         return self.coordinator.wifi_rssi
+
+
+class AeccModbusSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
+    """One decoded Modbus register, refreshed on the Modbus cadence.
+
+    No cleaner: these values never pass through get_value, and a failed
+    refresh keeps the previous reading in the coordinator rather than
+    publishing a zero.
+    """
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: AeccBatteryCoordinator,
+        config_entry: ConfigEntry,
+        key: str,
+        name: str,
+        register: int,
+        unit: str | None,
+        device_class: SensorDeviceClass | None,
+        state_class: SensorStateClass | None,
+        entity_category: EntityCategory | None,
+        icon: str | None,
+    ) -> None:
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        self._register = register
+        self._attr_unique_id = f"{config_entry.entry_id}_{key}"
+        self._attr_name = name
+        self._attr_native_unit_of_measurement = unit
+        self._attr_device_class = device_class
+        self._attr_state_class = state_class
+        self._attr_entity_category = entity_category
+        self._attr_icon = icon
+        if MODBUS_REGISTERS[register][1] != 1:
+            self._attr_suggested_display_precision = 1
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return self.coordinator.device_info
+
+    @property
+    def native_value(self) -> int | float | None:
+        return self.coordinator.modbus.get(self._register)
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success and self._register in self.coordinator.modbus

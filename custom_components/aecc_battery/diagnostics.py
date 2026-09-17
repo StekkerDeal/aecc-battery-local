@@ -162,6 +162,13 @@ async def async_get_config_entry_diagnostics(
         "last_accepted_at": dict(coordinator._cleaner_last_accepted_at),
     }
 
+    modbus_section = {
+        "supported": coordinator.modbus_supported,
+        "values": {str(register): value for register, value in coordinator.modbus.items()},
+        "last_refresh_age_seconds": coordinator.modbus_refresh_age,
+        "last_error": coordinator._last_modbus_error,
+    }
+
     last_poll_section = coordinator.data or coordinator._last_good_data or {}
 
     control_registers_section = await _fetch_control_registers(coordinator)
@@ -174,6 +181,7 @@ async def async_get_config_entry_diagnostics(
         "config": config_section,
         "live_state": live_state_section,
         "cleaner_state": cleaner_state_section,
+        "modbus": modbus_section,
         "last_poll": last_poll_section,
         "control_registers": control_registers_section,
         "write_history": write_history_section,

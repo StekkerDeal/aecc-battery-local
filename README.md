@@ -27,6 +27,7 @@ Works with any battery built on the AECC platform: Lunergy, Sunpura, Voltdeer, A
 - **Hybrid availability**: entities hold their last known value through brief sensor blips, then transition to `unavailable` after a sustained outage so automations and dashboards see an honest signal.
 - **Write-back verification**: every control command is re-read after writing; mismatches are logged so silent firmware drops become visible.
 - **Energy Dashboard ready**: accumulated kWh sensors (`total_increasing`) for the HA Energy Dashboard
+- **Modbus telemetry**: temperatures, lifetime energy counters, a Fault sensor, alarm flags and the unit's nominal power, read over Modbus on the same connection. Appears only on devices that answer the Modbus map
 - **Full battery control**: one signed power setpoint (positive charges, negative discharges), per-direction power limits (up to 2400W), SOC limits
 - **Honest controls**: a command the battery never confirmed raises an error in the interface instead of leaving a value on screen that was never accepted
 - **Work mode selector**: Self-Consumption (AI), Custom/Manual
@@ -151,6 +152,8 @@ The startup check exists because the first frame after a reload sometimes arrive
 
 **Per-brand thresholds.** The brand you select during setup determines the cleaning sensitivity. **Lunergy** gets the strictest profile (the SOC-stuck-at-zero pattern is documented on this device). **Sunpura, Voltdeer, and AEG** get a permissive profile that only catches obvious physical impossibilities. **Other** uses a conservative middle setting. No user-facing configuration is needed.
 
+**Modbus values** (temperatures, lifetime counters, fault, nominal power) do not pass through these cleaners. When a Modbus refresh fails they keep their last reading, and a refresh failure never affects the regular sensors.
+
 ### Write-back verification
 
 Every control command (direction, power, work mode, SOC limits) is automatically re-read 0.5 seconds after writing. If the device reports a value that differs from what was requested, the integration logs a `WARNING` so silent firmware drops become visible. The write itself still returns success based on the SET response, the verification is best-effort and does not change the public API.
@@ -180,6 +183,17 @@ Every control command (direction, power, work mode, SOC limits) is automatically
 | PV String 2 Power | Sensor (W) | Individual PV string |
 | Firmware Version | Sensor | Diagnostic; available on some AECC devices |
 | WiFi Signal | Sensor (dBm) | Diagnostic; datalogger WiFi signal strength, available on some AECC devices. Refreshes about once a minute |
+| Temperature 1 / 2 / 3 | Sensor (°C) | Diagnostic; three measuring points the vendor does not label. Modbus, refreshes every 30 s |
+| Lifetime Energy Charged | Sensor (kWh) | Device's own counter, measured at the battery behind the inverter. `total_increasing`. Modbus |
+| Lifetime Energy Discharged | Sensor (kWh) | Device's own counter, measured at the battery behind the inverter. `total_increasing`. Modbus |
+| Lifetime Energy to Grid | Sensor (kWh) | Device's own export counter; needs an external meter or CT, reads 0 without one. Modbus |
+| Available Charge Power | Sensor (W) | How much charge power the battery will accept right now. Modbus |
+| Nominal Power | Sensor (W) | Diagnostic; the unit's rated power as it reports it. Modbus |
+| Nominal Battery Power | Sensor (W) | Diagnostic; the battery's rated charge/discharge power as it reports it. Modbus |
+| Alarm Flags | Sensor | Diagnostic; raw alarm bitfield, 0 when nothing is wrong. Bit meanings are not documented. Modbus |
+| Fault | Binary sensor | On when the device reports a fault. Modbus |
+
+Modbus entities exist only on devices that answer the Modbus map on port 8080. The integration probes once at setup; on a device that does not answer, nothing changes.
 
 ### Controls
 
@@ -221,7 +235,7 @@ Single-unit systems are unaffected (no child devices). If you add or remove a ba
 4. **Energy coming out**: select `Energy Discharged`
 5. Click **Save**
 
-Energy sensors use Riemann sum integration (the AECC TCP protocol does not expose cumulative counters). Values persist across restarts.
+Energy sensors use Riemann sum integration and persist across restarts. The Lifetime Energy counters read over Modbus count at the battery, behind the inverter, so they leave out the inverter losses the house actually pays. They are not Energy Dashboard inputs; keep using Energy Charged and Energy Discharged there. Lifetime Energy to Grid needs an external meter or CT and reads 0 without one.
 
 ---
 

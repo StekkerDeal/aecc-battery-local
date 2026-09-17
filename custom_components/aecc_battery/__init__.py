@@ -32,7 +32,7 @@ from .tcp_manager import TCPClientManager
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SELECT]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.NUMBER, Platform.SELECT]
 
 
 def resolve_power_limits(options: dict) -> tuple[int, int]:
@@ -76,9 +76,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     await coordinator.async_config_entry_first_refresh()
 
-    # Read initial register state and probe DeviceManagement
+    # Read initial register state, probe DeviceManagement and the Modbus map
     await coordinator.async_read_initial_state()
     await coordinator.async_probe_device_management()
+    await coordinator.async_probe_modbus()
 
     # Up to 1.4.3 the device was keyed by host:port (the serial never parsed on
     # JET). 1.4.4 fixed the parse, so the identifier flips to the serial and HA

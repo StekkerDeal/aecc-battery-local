@@ -37,6 +37,38 @@ MAX_REGISTER_POWER_DEFAULT = 800  # watts - default local TCP limit without exte
 # avoid doubling traffic; RSSI changes slowly so 60s granularity is plenty.
 WIFI_RSSI_REFRESH_INTERVAL = 60  # seconds
 
+# Modbus TCP telemetry. The device answers plain Modbus frames on the same socket
+# as the JSON protocol (dispatch is per frame). Read-only: no write function
+# codes exist in this integration. The map is disjoint from the 3000+ JSON
+# control registers and not every brand is known to expose it, so it is probed
+# once at setup and the entities only exist when the probe answers.
+MODBUS_UNIT_ID = 1
+MODBUS_REFRESH_INTERVAL = 30  # seconds - temperatures and counters move slowly
+MODBUS_READ_TIMEOUT = 3  # seconds - same budget as the DeviceManagement probe
+# (start, count) blocks; every register below falls inside one of them.
+MODBUS_BLOCKS: tuple[tuple[int, int], ...] = ((65030, 23), (30073, 3), (52050, 4), (52080, 2))
+MB_TEMP_1, MB_TEMP_2, MB_TEMP_3 = 30073, 30074, 30075
+MB_ENERGY_CHARGED, MB_ENERGY_DISCHARGED, MB_ENERGY_TO_GRID = 52050, 52052, 52080
+MB_AVAILABLE_CHARGE_POWER = 65033
+MB_NOMINAL_POWER, MB_NOMINAL_BATTERY_POWER = 65035, 65037
+MB_DEVICE_STATUS = 65039  # 0 normal, 1 fault
+MB_ALARM_FLAGS = 65051  # bit meanings unknown
+# Decode table: register -> (kind, factor). kind is "i16", "u16" or "u32" (low word
+# first, the opposite of the usual Modbus word order). Adding a register is a row here.
+MODBUS_REGISTERS: dict[int, tuple[str, float]] = {
+    MB_TEMP_1: ("i16", 0.1),
+    MB_TEMP_2: ("i16", 0.1),
+    MB_TEMP_3: ("i16", 0.1),
+    MB_ENERGY_CHARGED: ("u32", 0.1),
+    MB_ENERGY_DISCHARGED: ("u32", 0.1),
+    MB_ENERGY_TO_GRID: ("u32", 0.1),
+    MB_AVAILABLE_CHARGE_POWER: ("i16", 1),
+    MB_NOMINAL_POWER: ("i16", 1),
+    MB_NOMINAL_BATTERY_POWER: ("i16", 1),
+    MB_DEVICE_STATUS: ("u16", 1),
+    MB_ALARM_FLAGS: ("u32", 1),
+}
+
 # Known AECC brands (for config flow dropdown)
 KNOWN_BRANDS = [
     "Lunergy",

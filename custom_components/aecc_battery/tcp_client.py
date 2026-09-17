@@ -5,9 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import struct
+from dataclasses import dataclass
 from typing import Any
 
 from .const import (
+    MODBUS_READ_TIMEOUT,
+    MODBUS_UNIT_ID,
     READ_TIMEOUT_SUSPECT_THRESHOLD,
     RECONNECT_BASE_COOLDOWN,
     RECONNECT_MAX_COOLDOWN,
@@ -18,9 +22,24 @@ _LOGGER = logging.getLogger(__name__)
 
 _GET_TIMEOUT = 10
 
+_MODBUS_PROTOCOL_ID = 0
+_MODBUS_FC_READ_HOLDING = 0x03
+_MODBUS_MBAP_LEN = 7
+
 
 class _ReadTimeout(Exception):
     """Raised by _read_json when the device accepts the request but never replies."""
+
+
+@dataclass(frozen=True)
+class ModbusException:
+    """The device answered a Modbus request with an exception code.
+
+    Code 2 (illegal data address) is how a device says it has no such register,
+    which is the signal for "this unit does not expose the Modbus map".
+    """
+
+    code: int
 
 
 class AeccTcpClient:
@@ -36,6 +55,7 @@ class AeccTcpClient:
         self.port = port
         self._manager = TCPClientManager.get_instance(host, port, timeout, base_cooldown, max_cooldown)
         self._serial = 0
+        self._modbus_tid = 0
         self._connected = False
         self._io_lock = asyncio.Lock()
 
@@ -119,6 +139,47 @@ class AeccTcpClient:
             except (json.JSONDecodeError, UnicodeDecodeError, ValueError, KeyError) as exc:
                 _LOGGER.debug("DeviceManagement probe error: %s", exc)
                 return None
+
+    async def read_holding_registers(self, start: int, count: int) -> list[int] | ModbusException | None:
+        """Read ``count`` holding registers from ``start`` over Modbus TCP.
+
+        Same socket and lock as the JSON commands; the device dispatches per
+        frame. Returns the unsigned 16-bit words, a ModbusException when the
+        device refused the address, or None when nothing usable came back. In
+        that last case the socket is closed so the JSON path never inherits a
+        half-read binary reply. Read-only by design: this is the only Modbus
+        function code in the integration.
+        """
+        self._modbus_tid = (self._modbus_tid + 1) & 0xFFFF
+        tid = self._modbus_tid
+        request = struct.pack(
+            ">HHHBBHH", tid, _MODBUS_PROTOCOL_ID, 6, MODBUS_UNIT_ID, _MODBUS_FC_READ_HOLDING, start, count
+        )
+        async with self._io_lock:
+            try:
+                reader, writer = await self._manager.get_reader_writer()
+                self._connected = True
+                writer.write(request)
+                await writer.drain()
+                async with asyncio.timeout(MODBUS_READ_TIMEOUT):
+                    header = await reader.readexactly(_MODBUS_MBAP_LEN)
+                    rx_tid, rx_proto, length, rx_unit = struct.unpack(">HHHB", header)
+                    if rx_tid != tid or rx_proto != _MODBUS_PROTOCOL_ID or rx_unit != MODBUS_UNIT_ID or length < 2:
+                        raise ValueError(f"unexpected MBAP header {header.hex()}")
+                    pdu = await reader.readexactly(length - 1)
+            except (TimeoutError, ValueError, ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
+                _LOGGER.debug("Modbus read %d x%d failed: %s - closing socket", start, count, exc)
+                await self._manager.close()
+                return None
+
+        function = pdu[0]
+        if function == _MODBUS_FC_READ_HOLDING | 0x80 and len(pdu) >= 2:
+            return ModbusException(pdu[1])
+        if function != _MODBUS_FC_READ_HOLDING or len(pdu) < 2 or len(pdu) != 2 + pdu[1] or pdu[1] != 2 * count:
+            _LOGGER.debug("Modbus read %d x%d malformed reply %s - closing socket", start, count, pdu.hex())
+            await self._manager.close()
+            return None
+        return list(struct.unpack(f">{count}H", pdu[2:]))
 
     # ── Low-level ──────────────────────────────────────────────────────────
 

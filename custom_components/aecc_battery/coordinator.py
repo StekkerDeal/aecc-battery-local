@@ -20,6 +20,9 @@ from .const import (
     DOMAIN,
     MAX_REGISTER_POWER_DEFAULT,
     MIN_POLL_INTERVAL,
+    MODBUS_BLOCKS,
+    MODBUS_REFRESH_INTERVAL,
+    MODBUS_REGISTERS,
     MODE_CUSTOM,
     MODE_REGISTERS,
     MODE_SELF_CONSUMPTION,
@@ -37,9 +40,20 @@ from .const import (
     SCHEDULE_MODE_CUSTOM_AEG,
     WIFI_RSSI_REFRESH_INTERVAL,
 )
-from .tcp_client import AeccTcpClient
+from .tcp_client import AeccTcpClient, ModbusException
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _i16(word: int) -> int:
+    """Signed 16-bit value of a Modbus register word."""
+    return word - 0x10000 if word & 0x8000 else word
+
+
+def _u32_low_first(low: int, high: int) -> int:
+    """Two-register counter as the device stores it: low word first."""
+    return low | (high << 16)
+
 
 # ── Unified field mapping ─────────────────────────────────────────────────────
 # Maps canonical sensor keys to
@@ -107,6 +121,12 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Monotonic timestamp of the last WiFi RSSI re-read. None until the first
         # refresh; used to throttle the periodic DeviceManagement read.
         self._last_rssi_refresh: float | None = None
+        # Modbus telemetry. None until the setup probe has run; the entities
+        # only exist when it answered. Values are keyed by register address.
+        self.modbus_supported: bool | None = None
+        self.modbus: dict[int, int | float] = {}
+        self._last_modbus_refresh: float | None = None
+        self._last_modbus_error: str | None = None
         self._commanded_power: int = 0
         self._commanded_direction: str = "Idle"
         self._commanded_min_soc: int = 10
@@ -263,6 +283,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._last_good_data = raw
         await self._async_maybe_refresh_rssi()
+        await self._async_maybe_refresh_modbus()
         return raw
 
     async def _async_maybe_refresh_rssi(self) -> None:
@@ -286,6 +307,77 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
         if info is not None:
             self._parse_device_management(info)
+
+    async def async_probe_modbus(self) -> None:
+        """Find out once whether the device answers the Modbus telemetry map."""
+        self.modbus_supported = await self._refresh_modbus()
+        if self.modbus_supported:
+            _LOGGER.info("Modbus telemetry available (%d registers)", len(self.modbus))
+        else:
+            _LOGGER.debug("Modbus telemetry not available: %s", self._last_modbus_error)
+
+    async def _async_maybe_refresh_modbus(self) -> None:
+        """Re-read the Modbus blocks on a throttle, after a good energy poll.
+
+        A failed read leaves the previous values in place and never propagates
+        to the poll, the same contract as the RSSI refresh.
+        """
+        if not self.modbus_supported:
+            return
+        now = time.monotonic()
+        if self._last_modbus_refresh is not None and (now - self._last_modbus_refresh) < MODBUS_REFRESH_INTERVAL:
+            return
+        self._last_modbus_refresh = now
+        try:
+            await self._refresh_modbus()
+        except Exception as exc:  # noqa: BLE001 - never let the Modbus refresh fail the poll
+            self._last_modbus_error = str(exc)
+            _LOGGER.debug("Modbus refresh failed: %s", exc)
+
+    async def _refresh_modbus(self) -> bool:
+        """Read every block and decode what answered. True when the first block did.
+
+        A block the device refuses (exception reply) is skipped, since a brand may
+        expose part of the map. A block with no usable reply stops the round: the
+        client has closed the socket and further frames would go nowhere.
+        """
+        self._last_modbus_error = None
+        words: dict[int, int] = {}
+        first_block_ok = False
+        for index, (start, count) in enumerate(MODBUS_BLOCKS):
+            result = await self.client.read_holding_registers(start, count)
+            if result is None:
+                self._last_modbus_error = f"no reply for {start} x{count}"
+                break
+            if isinstance(result, ModbusException):
+                self._last_modbus_error = f"exception {result.code} for {start} x{count}"
+                continue
+            if index == 0:
+                first_block_ok = True
+            words.update(zip(range(start, start + count), result, strict=True))
+
+        for register, (kind, factor) in MODBUS_REGISTERS.items():
+            if register not in words:
+                continue
+            if kind == "u32":
+                if register + 1 not in words:
+                    continue
+                raw = _u32_low_first(words[register], words[register + 1])
+            elif kind == "i16":
+                raw = _i16(words[register])
+            else:
+                raw = words[register]
+            # The only fractional factor in the map is 0.1, hence one decimal.
+            self.modbus[register] = raw if factor == 1 else round(raw * factor, 1)
+        self._last_modbus_refresh = time.monotonic()
+        return first_block_ok
+
+    @property
+    def modbus_refresh_age(self) -> float | None:
+        """Seconds since the last Modbus round, None before the first."""
+        if self._last_modbus_refresh is None:
+            return None
+        return time.monotonic() - self._last_modbus_refresh
 
     # ── Public access to commanded state (used by entity platforms) ──────────
 
