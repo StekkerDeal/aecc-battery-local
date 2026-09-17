@@ -828,6 +828,11 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         success = await self._logged_write(payload, f"work_mode({mode})")
         if success:
             self._current_work_mode = mode
+            if mode == MODE_SELF_CONSUMPTION:
+                # The AI decides now and the slot we wrote is cleared, so the
+                # remembered setpoint is no longer what the battery is running.
+                self._commanded_direction = "Idle"
+                self._commanded_power = 0
             self.async_update_listeners()
         return success
 

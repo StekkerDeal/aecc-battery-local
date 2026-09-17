@@ -229,7 +229,7 @@ Energy sensors use Riemann sum integration (the AECC TCP protocol does not expos
 
 ### Power Setpoint (the one to use)
 
-**Power Setpoint** is a single signed number: positive = charge, negative = discharge, 0 = idle, in watts. One write says what you mean, including the switch to Custom mode, so an automation can never race between two entities. Setting it to 0 holds an active 0 W setpoint, which is how you stop the battery. There is no separate "Disabled" mode, because turning EMS off does not reliably stop the battery (it hands control back to the device's own logic).
+**Power Setpoint** is a single signed number: positive = charge, negative = discharge, 0 = idle, in watts. One write says what you mean, including the switch to Custom mode, so an automation can never race between two entities. Setting it to 0 clears the schedule slot and leaves the AI off, so nothing is driving the battery. That is how you stop it. There is no separate "Disabled" mode, because turning EMS off does not reliably stop the battery (it hands control back to the device's own logic).
 
 If a write does not reach the battery, Home Assistant now shows an error and the entity keeps the value the battery actually has, instead of quietly displaying a command that never landed.
 

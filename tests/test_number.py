@@ -8,7 +8,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.aecc_battery.const import REG_CONTROL_TIME1
+from custom_components.aecc_battery.const import MODE_SELF_CONSUMPTION, REG_CONTROL_TIME1
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
 from custom_components.aecc_battery.number import AeccPowerSetpoint, AeccPowerSlider
 from custom_components.aecc_battery.select import AeccBatteryDirection, AeccWorkModeSelect
@@ -166,6 +166,23 @@ async def test_work_mode_rejects_unknown_option(coordinator: AeccBatteryCoordina
     assert err.value.translation_key == "set_rejected"
     # Rejected before anything was sent.
     coordinator.client.set_control_parameters.assert_not_awaited()
+
+
+async def test_self_consumption_clears_the_commanded_setpoint(
+    coordinator: AeccBatteryCoordinator, config_entry
+) -> None:
+    """Handing control back to the AI stops the entities showing the old setpoint."""
+    entity = AeccPowerSetpoint(coordinator, config_entry)
+    await entity.async_set_native_value(-800)
+    assert entity.native_value == -800
+
+    assert await coordinator.async_set_work_mode(MODE_SELF_CONSUMPTION) is True
+
+    # The battery was sent a cleared slot, so no manual command is running.
+    assert entity.native_value == 0
+    assert AeccPowerSlider(coordinator, config_entry).native_value == 0
+    assert AeccBatteryDirection(coordinator, config_entry).current_option == "Idle"
+    assert AeccWorkModeSelect(coordinator, config_entry).current_option == MODE_SELF_CONSUMPTION
 
 
 async def test_battery_control_records_commanded_power(coordinator: AeccBatteryCoordinator) -> None:

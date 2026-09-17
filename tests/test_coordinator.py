@@ -675,6 +675,17 @@ async def test_battery_control_flips_work_mode_to_custom(
     assert coordinator.commanded_direction == "Charge"
 
 
+async def test_work_mode_custom_keeps_commanded_setpoint(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """Custom does not write the slot, so the remembered command still describes it."""
+    await coordinator.async_set_battery_control("Discharge", 500)
+    assert await coordinator.async_set_work_mode(MODE_CUSTOM) is True
+
+    assert coordinator.commanded_direction == "Discharge"
+    assert coordinator.commanded_power == 500
+
+
 async def test_set_work_mode_unknown(
     coordinator: AeccBatteryCoordinator,
 ) -> None:

@@ -179,8 +179,9 @@ SLOT_DISABLED = "0,00:00,00:00,0,0,0,0,0,0,100,10"
 # Work modes (human-readable names for the Select entity)
 # Note: there is deliberately no "Disabled" mode. Disabling EMS (3000=0)
 # does not reliably stop the battery, it hands control back to the device's
-# own logic. To stop the battery, set Battery Direction to Idle (or Power to
-# 0), which holds an active 0 W setpoint with EMS kept on.
+# own logic. To stop the battery, set Power Setpoint to 0 (or Battery
+# Direction to Idle), which clears the schedule slot while leaving EMS on,
+# custom mode on and both AI flags off, so nothing drives the battery.
 MODE_SELF_CONSUMPTION = "Self-Consumption (AI)"
 MODE_CUSTOM = "Custom / Manual"
 
