@@ -91,7 +91,7 @@ Adding it by hand instead:
 5. Search for **AECC Battery** and click **Download**
 6. Restart Home Assistant
 
-Risky changes are published as pre-releases first, so they can be tried on real hardware before everyone gets them. To see them, open the integration in HACS, use the three-dot menu and enable **Show beta versions**.
+Risky changes are published as pre-releases first, so they can be tried on real hardware before everyone gets them. To install one, open the integration's page in HACS, choose **Redownload** from the three-dot menu, expand **Need a different version?** and pick the beta from the Release list.
 
 ---
 
