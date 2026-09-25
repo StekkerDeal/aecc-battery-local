@@ -21,6 +21,7 @@ from .tcp_manager import TCPClientManager
 _LOGGER = logging.getLogger(__name__)
 
 _GET_TIMEOUT = 10
+_DECODER = json.JSONDecoder()
 
 _MODBUS_PROTOCOL_ID = 0
 _MODBUS_FC_READ_HOLDING = 0x03
@@ -58,6 +59,10 @@ class AeccTcpClient:
         self._modbus_tid = 0
         self._connected = False
         self._io_lock = asyncio.Lock()
+        # Unconsumed bytes from the current connection, kept across reads so a
+        # frame cut off by a timeout can still complete and be matched.
+        self._rx_reader: asyncio.StreamReader | None = None
+        self._rx_buffer = b""
 
     async def async_connect(self) -> None:
         # get_reader_writer() reuses a live socket where _connect() replaced it.
@@ -115,23 +120,10 @@ class AeccTcpClient:
                 self._connected = True
                 writer.write((json.dumps(payload) + "\n").encode("utf-8"))
                 await writer.drain()
-                buffer = b""
-                async with asyncio.timeout(3):
-                    while True:
-                        chunk = await reader.read(4096)
-                        if not chunk:
-                            return None
-                        buffer += chunk
-                        try:
-                            return json.loads(buffer.decode("utf-8"))
-                        except json.JSONDecodeError:
-                            await asyncio.sleep(0.05)
-            except TimeoutError:
-                _LOGGER.debug(
-                    "DeviceManagement probe timed out (%d bytes received): %.200s",
-                    len(buffer),
-                    buffer.decode("utf-8", errors="replace") if buffer else "(empty)",
+                return await self._read_json(
+                    reader, payload["SerialNumber"], timeout=3, timeout_log_level=logging.DEBUG
                 )
+            except _ReadTimeout:
                 return None
             except (ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
                 _LOGGER.debug("DeviceManagement probe connection error: %s", exc)
@@ -201,7 +193,7 @@ class AeccTcpClient:
                 self._connected = True
                 writer.write((json.dumps(payload) + "\n").encode("utf-8"))
                 await writer.drain()
-                result = await self._read_json(reader)
+                result = await self._read_json(reader, payload["SerialNumber"])
                 self._manager.note_success()
                 self._manager.reset_read_timeout_streak()
                 return result
@@ -230,7 +222,7 @@ class AeccTcpClient:
                 self._connected = True
                 writer.write((json.dumps(payload) + "\n").encode("utf-8"))
                 await writer.drain()
-                response = await self._read_json(reader)
+                response = await self._read_json(reader, payload["SerialNumber"])
                 _LOGGER.debug("RX SET <- %s", response)
                 self._manager.note_success()
                 self._manager.reset_read_timeout_streak()
@@ -289,25 +281,54 @@ class AeccTcpClient:
             await self._manager.close()
             self._manager.reset_read_timeout_streak()
 
-    async def _read_json(self, reader: asyncio.StreamReader) -> dict[str, Any]:
-        buffer = b""
+    async def _read_json(
+        self,
+        reader: asyncio.StreamReader,
+        expected_serial: int,
+        timeout: float = _GET_TIMEOUT,
+        timeout_log_level: int = logging.WARNING,
+    ) -> dict[str, Any]:
+        """Return the reply to the request numbered ``expected_serial``.
+
+        Frames are decoded one whole object at a time. A reply that belongs to
+        an earlier request, typically one that timed out and answered late, is
+        discarded rather than handed to the wrong caller. Bytes left over when
+        a read times out stay in ``_rx_buffer`` so the rest of that frame can
+        complete on the next read and be discarded the same way, instead of
+        blocking the buffer. Replies may span lines (the wide register read is
+        pretty-printed), so nothing is ever dropped short of a complete object.
+        A reply without a serial is accepted as-is.
+        """
+        if reader is not self._rx_reader:
+            self._rx_reader = reader
+            self._rx_buffer = b""
         try:
-            async with asyncio.timeout(_GET_TIMEOUT):
+            async with asyncio.timeout(timeout):
                 while True:
+                    while True:
+                        try:
+                            text = self._rx_buffer.decode("utf-8").lstrip()
+                            data, end = _DECODER.raw_decode(text)
+                        except (UnicodeDecodeError, json.JSONDecodeError):
+                            break  # incomplete frame, read more
+                        self._rx_buffer = text[end:].encode("utf-8")
+                        if not isinstance(data, dict):
+                            continue
+                        serial = data.get("SerialNumber")
+                        if serial is not None and serial != expected_serial:
+                            _LOGGER.debug("Discarding stale reply serial %s, expected %s", serial, expected_serial)
+                            continue
+                        _LOGGER.debug("RX <- %s", data)
+                        return data
                     chunk = await reader.read(4096)
                     if not chunk:
                         raise ConnectionResetError("Battery closed connection")
-                    buffer += chunk
-                    try:
-                        data = json.loads(buffer.decode("utf-8"))
-                        _LOGGER.debug("RX <- %s", data)
-                        return data
-                    except json.JSONDecodeError:
-                        await asyncio.sleep(0.05)
+                    self._rx_buffer += chunk
         except TimeoutError:
-            _LOGGER.warning(
+            _LOGGER.log(
+                timeout_log_level,
                 "GET timed out waiting for response (%d bytes received): %.300s",
-                len(buffer),
-                buffer.decode("utf-8", errors="replace") if buffer else "(empty)",
+                len(self._rx_buffer),
+                self._rx_buffer.decode("utf-8", errors="replace") if self._rx_buffer else "(empty)",
             )
             raise _ReadTimeout from None
