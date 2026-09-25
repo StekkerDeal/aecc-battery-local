@@ -840,6 +840,31 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return SCHEDULE_MODE_CUSTOM_AEG
         return SCHEDULE_MODE_CUSTOM
 
+    def _slot_for(self, direction: str, power_w: int) -> str:
+        """Register 3003 slot for a command, carrying the commanded SOC limits.
+
+        The battery enforces the limits written inside the active slot, not the
+        standalone registers (#10), so any write that changes a limit while a
+        command is running has to re-send the slot through here.
+        """
+        charge_soc = self._commanded_max_soc
+        discharge_soc = self._commanded_min_soc
+        if direction == "Idle" or power_w == 0:
+            return f"0,00:00,00:00,0,0,0,0,0,0,{charge_soc},{discharge_soc}"
+        has_storage = bool(self.data and self.data.get("Storage_list"))
+        field7 = 5 if has_storage else 4
+        return self._encode_active_slot(direction, power_w, field7, charge_soc, discharge_soc)
+
+    def _active_slot_payload(self) -> dict[str, str]:
+        """The slot register to add to a limit write, or nothing.
+
+        Only while a manual command is running: an idle slot has nothing to
+        honour, and in Self-Consumption the AI owns the slot.
+        """
+        if self._current_work_mode == MODE_CUSTOM and self._commanded_direction != "Idle" and self._commanded_power > 0:
+            return {REG_CONTROL_TIME1: self._slot_for(self._commanded_direction, self._commanded_power)}
+        return {}
+
     async def async_set_battery_control(self, direction: str, power_w: int) -> bool:
         limit = self.max_charge_power if direction == "Charge" else self.max_discharge_power
         if direction != "Idle" and power_w > limit:
@@ -853,16 +878,7 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             power_w = limit
 
-        has_storage = bool(self.data and self.data.get("Storage_list"))
-        field7 = 5 if has_storage else 4
-
-        charge_soc = self._commanded_max_soc
-        discharge_soc = self._commanded_min_soc
-
-        if direction == "Idle" or power_w == 0:
-            slot1 = f"0,00:00,00:00,0,0,0,0,0,0,{charge_soc},{discharge_soc}"
-        else:
-            slot1 = self._encode_active_slot(direction, power_w, field7, charge_soc, discharge_soc)
+        slot1 = self._slot_for(direction, power_w)
 
         payload = {
             REG_EMS_ENABLE: "1",
@@ -930,13 +946,15 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_set_min_soc(self, value: int) -> bool:
         self._commanded_min_soc = value
-        payload = {REG_MIN_SOC: str(value)}
-        return await self._logged_write(payload, f"min_soc({value}%)")
+        payload = {REG_MIN_SOC: str(value), **self._active_slot_payload()}
+        suffix = "+slot" if REG_CONTROL_TIME1 in payload else ""
+        return await self._logged_write(payload, f"min_soc({value}%){suffix}")
 
     async def async_set_max_soc(self, value: int) -> bool:
         self._commanded_max_soc = value
-        payload = {REG_MAX_SOC: str(value)}
-        return await self._logged_write(payload, f"max_soc({value}%)")
+        payload = {REG_MAX_SOC: str(value), **self._active_slot_payload()}
+        suffix = "+slot" if REG_CONTROL_TIME1 in payload else ""
+        return await self._logged_write(payload, f"max_soc({value}%){suffix}")
 
     async def async_read_initial_state(self) -> None:
         resp = await self.client.get_control_parameters(

@@ -704,6 +704,48 @@ async def test_set_min_soc(coordinator: AeccBatteryCoordinator) -> None:
     coordinator.client.set_control_parameters.assert_called_with({"3023": "15"})
 
 
+async def test_max_soc_change_lands_in_the_active_slot(coordinator: AeccBatteryCoordinator) -> None:
+    """The battery enforces the slot's limits, so a limit change re-sends the slot (#10)."""
+    await coordinator.async_set_battery_control("Charge", 800)
+
+    assert await coordinator.async_set_max_soc(100) is True
+
+    coordinator.client.set_control_parameters.assert_called_with(
+        {"3024": "100", "3003": "1,00:00,23:59,-800,0,6,4,0,0,100,10"}
+    )
+    assert coordinator.write_history[-1]["operation"] == "max_soc(100%)+slot"
+
+
+async def test_min_soc_change_lands_in_the_active_slot(coordinator: AeccBatteryCoordinator) -> None:
+    await coordinator.async_set_battery_control("Discharge", 500)
+
+    assert await coordinator.async_set_min_soc(20) is True
+
+    coordinator.client.set_control_parameters.assert_called_with(
+        {"3023": "20", "3003": "1,00:00,23:59,500,0,6,4,0,0,100,20"}
+    )
+
+
+async def test_soc_change_after_idle_writes_only_the_register(coordinator: AeccBatteryCoordinator) -> None:
+    await coordinator.async_set_battery_control("Idle", 0)
+
+    await coordinator.async_set_max_soc(90)
+
+    coordinator.client.set_control_parameters.assert_called_with({"3024": "90"})
+
+
+async def test_soc_change_in_self_consumption_writes_only_the_register(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    await coordinator.async_set_battery_control("Charge", 800)
+    await coordinator.async_set_work_mode(MODE_SELF_CONSUMPTION)
+
+    await coordinator.async_set_min_soc(15)
+
+    coordinator.client.set_control_parameters.assert_called_with({"3023": "15"})
+    assert coordinator.write_history[-1]["operation"] == "min_soc(15%)"
+
+
 async def test_set_max_soc(coordinator: AeccBatteryCoordinator) -> None:
     """Test setting max SOC writes register 3024."""
     result = await coordinator.async_set_max_soc(95)
