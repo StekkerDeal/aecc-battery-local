@@ -183,7 +183,7 @@ Every control command (direction, power, work mode, SOC limits) is automatically
 | PV String 2 Power | Sensor (W) | Individual PV string |
 | Firmware Version | Sensor | Diagnostic; available on some AECC devices |
 | WiFi Signal | Sensor (dBm) | Diagnostic; datalogger WiFi signal strength, available on some AECC devices. Refreshes about once a minute |
-| Temperature 1 / 2 / 3 | Sensor (°C) | Diagnostic; three measuring points the vendor does not label. Modbus, refreshes every 30 s |
+| Inverter / PV Radiator / Transformer Temperature | Sensor (°C) | Diagnostic; the three points the vendor app reports. Modbus, refreshes every 30 s |
 | Lifetime Energy Charged | Sensor (kWh) | Device's own counter, measured at the battery behind the inverter. `total_increasing`. Modbus |
 | Lifetime Energy Discharged | Sensor (kWh) | Device's own counter, measured at the battery behind the inverter. `total_increasing`. Modbus |
 | Lifetime Energy to Grid | Sensor (kWh) | Device's own export counter; needs an external meter or CT, reads 0 without one. Modbus |
