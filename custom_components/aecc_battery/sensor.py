@@ -99,8 +99,9 @@ _MEAS = SensorStateClass.MEASUREMENT
 _TOTAL = SensorStateClass.TOTAL_INCREASING
 _MODBUS_SENSORS = [
     # Labels as the vendor app shows them; the keys keep the register order.
-    ("temperature_1", "Inverter Temperature", MB_TEMP_1, _TEMP, SensorDeviceClass.TEMPERATURE, _MEAS, _DIAG, None),
-    ("temperature_2", "PV Radiator Temperature", MB_TEMP_2, _TEMP, SensorDeviceClass.TEMPERATURE, _MEAS, _DIAG, None),
+    # The app numbers the first two the other way round from the registers.
+    ("temperature_1", "PV Radiator Temperature", MB_TEMP_1, _TEMP, SensorDeviceClass.TEMPERATURE, _MEAS, _DIAG, None),
+    ("temperature_2", "Inverter Temperature", MB_TEMP_2, _TEMP, SensorDeviceClass.TEMPERATURE, _MEAS, _DIAG, None),
     ("temperature_3", "Transformer Temperature", MB_TEMP_3, _TEMP, SensorDeviceClass.TEMPERATURE, _MEAS, _DIAG, None),
     # Lifetime counters count at the battery, behind the inverter, so they are
     # not Energy Dashboard inputs; the integrated energy sensors above are.

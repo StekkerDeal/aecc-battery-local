@@ -47,7 +47,7 @@ MODBUS_REFRESH_INTERVAL = 30  # seconds - temperatures and counters move slowly
 MODBUS_READ_TIMEOUT = 3  # seconds - same budget as the DeviceManagement probe
 # (start, count) blocks; every register below falls inside one of them.
 MODBUS_BLOCKS: tuple[tuple[int, int], ...] = ((65030, 23), (30073, 3), (52050, 4), (52080, 2))
-MB_TEMP_1, MB_TEMP_2, MB_TEMP_3 = 30073, 30074, 30075  # inverter, PV radiator, transformer
+MB_TEMP_1, MB_TEMP_2, MB_TEMP_3 = 30073, 30074, 30075  # PV radiator, inverter, transformer
 MB_ENERGY_CHARGED, MB_ENERGY_DISCHARGED, MB_ENERGY_TO_GRID = 52050, 52052, 52080
 MB_AVAILABLE_CHARGE_POWER = 65033
 MB_NOMINAL_POWER, MB_NOMINAL_BATTERY_POWER = 65035, 65037
