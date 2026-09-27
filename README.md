@@ -350,6 +350,9 @@ The integration writes the same registers as the official AECC app, but differen
 - Recovery is to restart the device and reload the integration inside the window, rather than waiting: trigger the restart, then within about 20 seconds use **Settings → Devices & Services → AECC Battery → ⋮ → Reload**.
 - Confirmed on the TSUN PowerTrunk MAU5000 (firmware 1.4.9.9.5). The other brands listed above reconnect normally, so treat this as per-firmware rather than a property of the platform.
 
+**Updating the battery firmware**
+- Disable the integration before starting a firmware update in the vendor app, and enable it again once the update has finished. This is good practice for any integration that talks to a device being updated, not something specific to this one.
+
 ### Filing a bug report
 
 When [opening an issue](https://github.com/StekkerDeal/aecc-battery-local/issues), please attach a diagnostics export so we can see your device state without round-tripping for logs:
