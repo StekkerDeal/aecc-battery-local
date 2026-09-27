@@ -43,8 +43,8 @@
           "max_discharge_power": "Maximale Entladeleistung (W)"
         },
         "data_description": {
-          "max_charge_power": "Höchste Ladeleistung, die die Integration ansteuert (100-2400W, 2500W bei TSUN; Standard 800W). Laden erfolgt aus dem Netz, Einspeisegrenzen gelten hier nicht.",
-          "max_discharge_power": "Höchste Entladeleistung, die die Integration ansteuert (100-2400W, 2500W bei TSUN; Standard 800W). Für mehr als 800W muss zusätzlich die Einstellung 'On Grid Output' in der Hersteller-App erhöht werden."
+          "max_charge_power": "Höchste Ladeleistung, die die Integration ansteuert (100-2500W; Standard 800W). Laden erfolgt aus dem Netz, Einspeisegrenzen gelten hier nicht.",
+          "max_discharge_power": "Höchste Entladeleistung, die die Integration ansteuert (100-2500W; Standard 800W). Für mehr als 800W muss zusätzlich die Einstellung 'On Grid Output' in der Hersteller-App erhöht werden."
         }
       }
     },

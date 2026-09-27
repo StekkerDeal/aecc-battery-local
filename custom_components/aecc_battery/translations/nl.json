@@ -43,8 +43,8 @@
           "max_discharge_power": "Maximaal ontlaadvermogen (W)"
         },
         "data_description": {
-          "max_charge_power": "Hoogste laadvermogen dat de integratie aanstuurt (100-2400W, 2500W op TSUN; standaard 800W). Laden gebeurt vanaf het net, dus terugleverbeperkingen gelden hier niet.",
-          "max_discharge_power": "Hoogste ontlaadvermogen dat de integratie aanstuurt (100-2400W, 2500W op TSUN; standaard 800W). Voor meer dan 800W moet ook de 'On Grid Output'-instelling in de fabrikanten-app worden verhoogd."
+          "max_charge_power": "Hoogste laadvermogen dat de integratie aanstuurt (100-2500W; standaard 800W). Laden gebeurt vanaf het net, dus terugleverbeperkingen gelden hier niet.",
+          "max_discharge_power": "Hoogste ontlaadvermogen dat de integratie aanstuurt (100-2500W; standaard 800W). Voor meer dan 800W moet ook de 'On Grid Output'-instelling in de fabrikanten-app worden verhoogd."
         }
       }
     },

@@ -57,6 +57,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 | **Oscal** | Power Storage 2000 | Community confirmed | Per-string PV sensors read 0 W on this firmware |
 | **Fossibot** | FBP 1200 | Community confirmed | Per-unit charging power and per-string PV read 0 W on this firmware |
 | **TSUN** | PowerTrunk MAU5000 | Fully tested | Supports 2500 W; reconnect needs a device restart ([details](#troubleshooting)) |
+| **Humsienk** | NOVA All-in-One | Community confirmed | Supports 2500 W |
 
 ### Expected Compatible (Untested)
 
@@ -120,7 +121,7 @@ By default, the integration limits both charging and discharging to **800W**. Mo
 - **Max charge power** (100-2400W): the highest charging power the integration will command. Charging draws from the grid, so no feed-in limits apply.
 - **Max discharge power** (100-2400W): the highest discharging power the integration will command.
 
-The ceiling follows the selected brand. Brands rated above 2400W accept more (**TSUN: 2500W**); asking for more than the selected brand is rated for is refused in the Configure dialog, so a 2400W unit cannot be set to 2500W by picking the wrong brand.
+The ceiling follows the selected brand. Brands rated above 2400W accept more (**TSUN and Humsienk: 2500W**); asking for more than the selected brand is rated for is refused in the Configure dialog, so a 2400W unit cannot be set to 2500W by picking the wrong brand.
 
 All control paths enforce these limits: the Power Setpoint entity gets matching bounds (e.g. -800 to +2400 for an 800W discharge / 2400W charge configuration), and out-of-range slider or automation commands are clamped with a warning in the log.
 

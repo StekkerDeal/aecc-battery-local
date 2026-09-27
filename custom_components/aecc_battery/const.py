@@ -81,13 +81,14 @@ KNOWN_BRANDS = [
     "Oscal",
     "Fossibot",
     "TSUN",
+    "Humsienk",
     "Other",
 ]
 
 # Brands whose hardware is rated above the common 2400W. The options form offers
 # the highest of these and rejects anything over the selected brand's own
 # ceiling, so a 2400W unit can never be asked for more.
-BRAND_MAX_POWER_W: dict[str, int] = {"TSUN": 2500}
+BRAND_MAX_POWER_W: dict[str, int] = {"TSUN": 2500, "Humsienk": 2500}
 MAX_BRAND_POWER_W = max([MAX_BATTERY_POWER_W, *BRAND_MAX_POWER_W.values()])
 
 
@@ -166,6 +167,11 @@ BRAND_PROFILES: dict[str, dict[str, float | int]] = {
         "hold_last_value_seconds": 120,
     },
     "TSUN": {
+        "soc_zero_reject_during_active_w": 200,
+        "soc_max_rate_pct_per_min": 10.0,
+        "hold_last_value_seconds": 120,
+    },
+    "Humsienk": {
         "soc_zero_reject_during_active_w": 200,
         "soc_max_rate_pct_per_min": 10.0,
         "hold_last_value_seconds": 120,

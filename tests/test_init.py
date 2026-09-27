@@ -82,6 +82,7 @@ def test_power_limits_new_keys_win_over_legacy() -> None:
 def test_brand_power_ceiling() -> None:
     """Only brands rated above 2400W get more; everything else keeps 2400W."""
     assert max_power_for_brand("TSUN") == 2500
+    assert max_power_for_brand("Humsienk") == 2500
     assert max_power_for_brand("Sunpura") == 2400
     assert max_power_for_brand("Other") == 2400
     assert max_power_for_brand(None) == 2400
