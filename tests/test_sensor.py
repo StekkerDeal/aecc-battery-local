@@ -17,8 +17,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.util.dt import utcnow
+from pytest_homeassistant_custom_component.common import mock_restore_cache, mock_restore_cache_with_extra_data
 
 from custom_components.aecc_battery.const import BRAND_PROFILES
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
@@ -333,3 +334,54 @@ def test_energy_counters_skip_frames_without_grid_output(coordinator: AeccBatter
     assert charged._accumulated_kwh == 0.0
     assert discharged._accumulated_kwh == 0.0
     assert charged._last_update_time is None
+
+
+# ── Energy counters across a restart or reload ───────────────────────────────
+
+_ENERGY_ENTITY = "sensor.test_energy_discharged"
+
+
+async def _restored_kwh(hass: HomeAssistant, coordinator, config_entry) -> float:
+    sensor = _energy_sensor(coordinator, config_entry, "energy_discharged")
+    sensor.hass = hass
+    sensor.entity_id = _ENERGY_ENTITY
+    await sensor.async_added_to_hass()
+    # Drop the coordinator listener again, or its refresh timer lingers.
+    sensor._call_on_remove_callbacks()
+    return sensor._accumulated_kwh
+
+
+async def test_counter_keeps_total_when_unavailable_at_reload(
+    hass: HomeAssistant, coordinator: AeccBatteryCoordinator, config_entry
+) -> None:
+    """A reload while the battery is not answering must not reset the total."""
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State(_ENERGY_ENTITY, "unavailable"), {"native_value": 4.223, "native_unit_of_measurement": "kWh"})],
+    )
+    assert await _restored_kwh(hass, coordinator, config_entry) == 4.223
+
+
+async def test_counter_restores_from_state_without_sensor_data(
+    hass: HomeAssistant, coordinator: AeccBatteryCoordinator, config_entry
+) -> None:
+    """Upgrade path: earlier versions stored the state only."""
+    mock_restore_cache(hass, [State(_ENERGY_ENTITY, "3.5")])
+    assert await _restored_kwh(hass, coordinator, config_entry) == 3.5
+
+
+async def test_counter_starts_at_zero_with_nothing_to_restore(
+    hass: HomeAssistant, coordinator: AeccBatteryCoordinator, config_entry
+) -> None:
+    mock_restore_cache(hass, [State(_ENERGY_ENTITY, "unavailable")])
+    assert await _restored_kwh(hass, coordinator, config_entry) == 0.0
+
+
+def test_counter_stores_its_total(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    """What gets stored for the next restore is the accumulated total."""
+    coordinator.data = _frame("tsun-discharging.json")
+    discharged = _energy_sensor(coordinator, config_entry, "energy_discharged")
+    start = utcnow()
+    _tick([discharged], start)
+    _tick([discharged], start + timedelta(seconds=30))
+    assert discharged.extra_restore_state_data.native_value == discharged.native_value > 0

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
@@ -21,7 +21,6 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.dt import utcnow
 
@@ -402,7 +401,7 @@ class AeccUnitStatusSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEnti
         return super().available and any(p is not None for p in self._powers())
 
 
-class AeccEnergySensor(CoordinatorEntity[AeccBatteryCoordinator], RestoreEntity, SensorEntity):
+class AeccEnergySensor(CoordinatorEntity[AeccBatteryCoordinator], RestoreSensor):
     """Accumulated energy (kWh) computed by integrating power over time."""
 
     _attr_has_entity_name = True
@@ -439,6 +438,12 @@ class AeccEnergySensor(CoordinatorEntity[AeccBatteryCoordinator], RestoreEntity,
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        # The stored sensor data keeps the total even when the entity was
+        # unavailable at shutdown or reload; the state alone does not.
+        last_data = await self.async_get_last_sensor_data()
+        if last_data is not None and isinstance(last_data.native_value, (int, float)):
+            self._accumulated_kwh = float(last_data.native_value)
+            return
         last_state = await self.async_get_last_state()
         if last_state and last_state.state not in ("unknown", "unavailable"):
             try:
