@@ -1,0 +1,57 @@
+{
+  "_note": "last_poll from a real AFERIY PS240 two-unit Home Assistant diagnostics export (issue #2), unedited apart from the redacted serials. Charging from its own panels: TotalPVPower 758, TotalGridOutputPower 280, TotalChargePower 401, every per-unit charge and PV field 0.",
+  "last_poll": {
+    "Response": "EnergyParameter",
+    "SerialNumber": 467,
+    "Target": "HA",
+    "Storage_list": [
+      {
+        "DevAddr": 1,
+        "StorageSN": "SIMSN0000000001",
+        "StorageStatus": 1,
+        "PvChargingPower": 0,
+        "AcChargingPower": 0,
+        "BatterySoc": 94,
+        "BatteryDischargingPower": 0,
+        "AcInActivePower": 1700,
+        "OffGridLoadPower": 0,
+        "BatteryChargingPower": 0,
+        "PvStringCount": 0,
+        "Pv1Power": 0,
+        "Pv2Power": 0,
+        "Pv3Power": 0,
+        "Pv4Power": 0
+      },
+      {
+        "DevAddr": 2,
+        "StorageSN": "SIMSN0000000002",
+        "StorageStatus": 1,
+        "PvChargingPower": 0,
+        "AcChargingPower": 0,
+        "BatterySoc": 94,
+        "BatteryDischargingPower": 0,
+        "AcInActivePower": 1100,
+        "OffGridLoadPower": 0,
+        "BatteryChargingPower": 0,
+        "PvStringCount": 0,
+        "Pv1Power": 0,
+        "Pv2Power": 0,
+        "Pv3Power": 0,
+        "Pv4Power": 0
+      }
+    ],
+    "SSumInfoList": {
+      "ControlEnableStatus": 1,
+      "MeterTotalActivePower": 2,
+      "TotalPVPower": 758,
+      "TotalPVChargePower": 0,
+      "TotalACChargePower": 0,
+      "TotalSmartLoadElectricalPower": 0,
+      "AverageBatteryAverageSOC": 94,
+      "TotalBatteryOutputPower": 0,
+      "TotalGridOutputPower": 280,
+      "TotalBackUpPower": 0,
+      "TotalChargePower": 401
+    }
+  }
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -26,6 +27,7 @@ from homeassistant.util.dt import utcnow
 
 from .const import (
     DOMAIN,
+    IDLE_DEADBAND_W,
     MB_ALARM_FLAGS,
     MB_AVAILABLE_CHARGE_POWER,
     MB_ENERGY_CHARGED,
@@ -67,6 +69,9 @@ _SENSORS = [
     ("pv2_power", "PV String 2 Power", "pv2_power", UnitOfPower.WATT, "mdi:solar-panel", True),
 ]
 
+# The device's own figure; some models leave it at 0 while the panels charge.
+_DIAGNOSTIC_KEYS = {"pv_charging_power"}
+
 # ── Per-unit sensors (multi-unit systems only) ────────────────────────────────
 # _SENSORS minus pv_power/grid_power (system-level quantities), plus
 # battery_charging_power (the hub only exposes it folded into Battery Power).
@@ -82,11 +87,27 @@ _UNIT_SENSORS = [s for s in _SENSORS if s[0] not in ("pv_power", "grid_power")] 
 ]
 
 # ── Energy counter definitions ────────────────────────────────────────────────
-# (key, name, power_keys, icon)
+# (key, name, power_fn, icon); power_fn returns watts, or None for no reading.
+
+
+def _charged_w(coordinator: AeccBatteryCoordinator) -> float | None:
+    power = coordinator.battery_power_w()
+    return None if power is None else max(power, 0.0)
+
+
+def _discharged_w(coordinator: AeccBatteryCoordinator) -> float | None:
+    power = coordinator.battery_power_w()
+    return None if power is None else max(-power, 0.0)
+
+
+def _generated_w(coordinator: AeccBatteryCoordinator) -> float | None:
+    return coordinator.get_value("pv_power")
+
+
 _ENERGY_SENSORS = [
-    ("energy_charged", "Energy Charged", ["ac_charging_power", "pv_charging_power"], "mdi:battery-charging"),
-    ("energy_discharged", "Energy Discharged", ["battery_discharging_power"], "mdi:battery-arrow-down-outline"),
-    ("energy_generated", "Energy Generated", ["pv_power"], "mdi:solar-power"),
+    ("energy_charged", "Energy Charged", _charged_w, "mdi:battery-charging"),
+    ("energy_discharged", "Energy Discharged", _discharged_w, "mdi:battery-arrow-down-outline"),
+    ("energy_generated", "Energy Generated", _generated_w, "mdi:solar-power"),
 ]
 
 _MAX_GAP_SECONDS = 60
@@ -186,8 +207,8 @@ async def async_setup_entry(
     for key, name, canonical_key, unit, icon, is_power in _SENSORS:
         entities.append(AeccSensor(coordinator, config_entry, key, name, canonical_key, unit, icon, is_power))
 
-    for key, name, power_keys, icon in _ENERGY_SENSORS:
-        entities.append(AeccEnergySensor(coordinator, config_entry, key, name, power_keys, icon))
+    for key, name, power_fn, icon in _ENERGY_SENSORS:
+        entities.append(AeccEnergySensor(coordinator, config_entry, key, name, power_fn, icon))
 
     entities.append(AeccGridExportSensor(coordinator, config_entry))
     entities.append(AeccBatteryPowerSensor(coordinator, config_entry))
@@ -243,6 +264,8 @@ class AeccSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
         self._attr_native_unit_of_measurement = unit
         self._attr_icon = icon
         self._attr_device_class = SensorDeviceClass.POWER if is_power else SensorDeviceClass.BATTERY
+        if key in _DIAGNOSTIC_KEYS:
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._last_value = None
 
     @property
@@ -328,6 +351,8 @@ class AeccUnitSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
         self._attr_native_unit_of_measurement = unit_of_meas
         self._attr_icon = icon
         self._attr_device_class = SensorDeviceClass.POWER if is_power else SensorDeviceClass.BATTERY
+        if key in _DIAGNOSTIC_KEYS:
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_device_info = coordinator.unit_device_info(unit)
 
     @property
@@ -392,12 +417,12 @@ class AeccEnergySensor(CoordinatorEntity[AeccBatteryCoordinator], RestoreEntity,
         config_entry: ConfigEntry,
         key: str,
         name: str,
-        power_keys: list[str],
+        power_fn: Callable[[AeccBatteryCoordinator], float | None],
         icon: str,
     ) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
-        self._power_keys = power_keys
+        self._power_fn = power_fn
         self._attr_unique_id = f"{config_entry.entry_id}_{key}"
         self._attr_name = name
         self._attr_icon = icon
@@ -425,24 +450,15 @@ class AeccEnergySensor(CoordinatorEntity[AeccBatteryCoordinator], RestoreEntity,
     def _handle_coordinator_update(self) -> None:
         now = utcnow()
 
-        total_power_w = 0.0
-        any_valid = False
-        for key in self._power_keys:
-            val = self.coordinator.get_value(key)
-            if val is not None:
-                try:
-                    total_power_w += float(val)
-                    any_valid = True
-                except (TypeError, ValueError):
-                    pass
+        power_w = self._power_fn(self.coordinator)
 
-        if any_valid and self._last_update_time is not None:
+        if power_w is not None and self._last_update_time is not None:
             delta_seconds = (now - self._last_update_time).total_seconds()
             if 0 < delta_seconds <= _MAX_GAP_SECONDS:
-                delta_kwh = total_power_w * delta_seconds / 3_600_000
+                delta_kwh = float(power_w) * delta_seconds / 3_600_000
                 self._accumulated_kwh += delta_kwh
 
-        if any_valid:
+        if power_w is not None:
             self._last_update_time = now
 
         self.async_write_ha_state()
@@ -499,18 +515,11 @@ class AeccBatteryPowerSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEn
 
     @property
     def native_value(self) -> float | None:
-        charge = self.coordinator.get_value("battery_charging_power") or 0
-        ac_charge = self.coordinator.get_value("ac_charging_power") or 0
-        discharge = self.coordinator.get_value("battery_discharging_power") or 0
-        try:
-            effective_charge = max(float(charge), float(ac_charge))
-            return round(effective_charge - float(discharge), 1)
-        except (TypeError, ValueError):
-            return None
+        return self.coordinator.battery_power_w()
 
 
 class AeccBatteryStatusSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):
-    """Derived text status: Charging / Discharging / Idle."""
+    """Charging / Discharging / Idle from the sign of Battery Power, with an idle band."""
 
     _attr_has_entity_name = True
     _attr_name = "Battery Status"
@@ -520,28 +529,21 @@ class AeccBatteryStatusSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorE
         super().__init__(coordinator)
         self._config_entry = config_entry
         self._attr_unique_id = f"{config_entry.entry_id}_battery_status"
-        self._last_status: str = "Idle"
 
     @property
     def device_info(self) -> DeviceInfo:
         return self.coordinator.device_info
 
     @property
-    def native_value(self) -> str:
-        charge = self.coordinator.get_value("battery_charging_power")
-        ac_charge = self.coordinator.get_value("ac_charging_power")
-        discharge = self.coordinator.get_value("battery_discharging_power")
-        if charge is None and ac_charge is None and discharge is None:
-            return self._last_status
-        try:
-            charge_f = float(charge or 0)
-            ac_charge_f = float(ac_charge or 0)
-            discharge_f = float(discharge or 0)
-        except (TypeError, ValueError):
-            return self._last_status
-        status = _derive_status(charge_f, ac_charge_f, discharge_f)
-        self._last_status = status
-        return status
+    def native_value(self) -> str | None:
+        power = self.coordinator.battery_power_w()
+        if power is None:
+            return None
+        if power > IDLE_DEADBAND_W:
+            return "Charging"
+        if power < -IDLE_DEADBAND_W:
+            return "Discharging"
+        return "Idle"
 
 
 class AeccFirmwareSensor(CoordinatorEntity[AeccBatteryCoordinator], SensorEntity):

@@ -1,0 +1,40 @@
+{
+  "_note": "last_poll from a real JET GreenARK Pro Home Assistant diagnostics export, unedited apart from the redacted serial. An 1832 W heater on the EPS socket, grid plugged in: TotalGridOutputPower -1841, TotalBackUpPower 183.2 (10 W units), TotalACChargePower 9.",
+  "last_poll": {
+    "Response": "EnergyParameter",
+    "SerialNumber": 131255,
+    "Target": "HA",
+    "Storage_list": [
+      {
+        "DevAddr": 1,
+        "StorageSN": "SIMSN0000000001",
+        "StorageStatus": 1,
+        "PvChargingPower": 0,
+        "AcChargingPower": 90,
+        "BatterySoc": 30,
+        "BatteryDischargingPower": 0,
+        "AcInActivePower": -18410,
+        "OffGridLoadPower": 1832,
+        "BatteryChargingPower": 0,
+        "PvStringCount": 0,
+        "Pv1Power": 0,
+        "Pv2Power": 0,
+        "Pv3Power": 0,
+        "Pv4Power": 0
+      }
+    ],
+    "SSumInfoList": {
+      "ControlEnableStatus": 1,
+      "MeterTotalActivePower": 2192,
+      "TotalPVPower": 0,
+      "TotalPVChargePower": 0,
+      "TotalACChargePower": 9,
+      "TotalSmartLoadElectricalPower": 0,
+      "AverageBatteryAverageSOC": 30,
+      "TotalBatteryOutputPower": 0,
+      "TotalGridOutputPower": -1841,
+      "TotalBackUpPower": 183.2,
+      "TotalChargePower": 0
+    }
+  }
+}

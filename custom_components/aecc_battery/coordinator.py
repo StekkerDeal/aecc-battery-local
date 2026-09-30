@@ -547,6 +547,27 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return None
         return None
 
+    def battery_power_w(self) -> float | None:
+        """Signed battery power, positive = charging: PV in minus what leaves both sockets.
+
+        The energy balance, so Home adds up with Energy Generated as solar.
+        TotalGridOutputPower is positive towards the house; the backup socket
+        is the second way out, so a grid-fed backup load is not charge. Not
+        TotalChargePower: that is cell side, after losses, and 0 while
+        discharging. PV is the summary total only; pv_power falls back to
+        per-unit PvChargingPower, which is not panel output.
+        """
+        try:
+            grid_output = float(self.summary["TotalGridOutputPower"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        try:
+            pv = float(self.summary.get("TotalPVPower", 0))
+        except (TypeError, ValueError):
+            pv = 0.0
+        backup = self.get_value("backup_power") or 0.0
+        return round(pv - grid_output - backup, 1)
+
     def get_value(self, canonical_key: str, default: Any = None) -> Any:
         raw_value = self._system_value(canonical_key)
         if raw_value is None:

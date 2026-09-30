@@ -169,7 +169,7 @@ def test_soc_fallback_averages_units(coordinator: AeccBatteryCoordinator) -> Non
 
 
 def test_battery_charging_power_always_sums_units(coordinator: AeccBatteryCoordinator) -> None:
-    """TotalChargePower is never used, even when present (unconfirmed semantics)."""
+    """TotalChargePower is never used: cell side after losses, 0 while discharging."""
     coordinator.data["Storage_list"][0]["BatteryChargingPower"] = 1000
     coordinator.data["Storage_list"][1]["BatteryChargingPower"] = 2000
     coordinator.data["SSumInfoList"]["TotalChargePower"] = 9999

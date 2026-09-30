@@ -9,21 +9,37 @@ underlying sensor has stopped responding.
 
 from __future__ import annotations
 
+import json
 import time
-from unittest.mock import AsyncMock, MagicMock
+from datetime import timedelta
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.util.dt import utcnow
 
 from custom_components.aecc_battery.const import BRAND_PROFILES
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
 from custom_components.aecc_battery.sensor import (
+    _ENERGY_SENSORS,
     _SENSORS,
+    _UNIT_SENSORS,
+    AeccBatteryPowerSensor,
+    AeccBatteryStatusSensor,
+    AeccEnergySensor,
     AeccFirmwareSensor,
     AeccSensor,
+    AeccUnitSensor,
     AeccWifiSignalSensor,
 )
+
+_FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _frame(name: str) -> dict:
+    return json.loads((_FIXTURES / name).read_text(encoding="utf-8"))["last_poll"]
 
 
 @pytest.fixture
@@ -190,3 +206,130 @@ def test_diagnostic_sensors_use_entity_category_enum(coordinator: AeccBatteryCoo
     """
     assert AeccFirmwareSensor(coordinator, config_entry).entity_category is EntityCategory.DIAGNOSTIC
     assert AeccWifiSignalSensor(coordinator, config_entry).entity_category is EntityCategory.DIAGNOSTIC
+
+
+def test_pv_charging_power_is_diagnostic(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    """PV Charging Power is the device's own figure, not a dashboard input."""
+    coordinator.data = _frame("aferiy-pv-two-unit.json")
+    hub = AeccSensor(coordinator, config_entry, *next(s for s in _SENSORS if s[0] == "pv_charging_power"))
+    assert hub.entity_category is EntityCategory.DIAGNOSTIC
+    spec = next(s for s in _UNIT_SENSORS if s[0] == "pv_charging_power")
+    unit = AeccUnitSensor(coordinator, config_entry, coordinator.units[0], *spec)
+    assert unit.entity_category is EntityCategory.DIAGNOSTIC
+    pv_power = AeccSensor(coordinator, config_entry, *next(s for s in _SENSORS if s[0] == "pv_power"))
+    assert pv_power.entity_category is None
+
+
+# ── Battery power: PV in minus what leaves the socket ─────────────────────────
+
+# (fixture, battery power) from real frames.
+_BALANCE_FRAMES = [
+    ("sunpura-pv-only.json", 190.0),  # panels only, grid unplugged
+    ("sunpura-pv-and-ac.json", 450.0),  # panels plus grid
+    ("aferiy-pv-two-unit.json", 478.0),  # panels, part of the PV to the house
+    ("tsun-discharging.json", -547.0),  # no panels, discharging
+]
+
+
+@pytest.mark.parametrize(("fixture", "expected"), _BALANCE_FRAMES)
+def test_battery_power_on_real_frames(
+    coordinator: AeccBatteryCoordinator, config_entry, fixture: str, expected: float
+) -> None:
+    coordinator.data = _frame(fixture)
+    assert coordinator.battery_power_w() == expected
+    assert AeccBatteryPowerSensor(coordinator, config_entry).native_value == expected
+
+
+@pytest.mark.parametrize(("fixture", "expected"), [f for f in _BALANCE_FRAMES if f[1] > 0])
+def test_battery_power_covers_cell_charge(coordinator: AeccBatteryCoordinator, fixture: str, expected: float) -> None:
+    """Cross-check: the socket-side balance is at least the cell-side charge after losses."""
+    coordinator.data = _frame(fixture)
+    assert expected >= float(coordinator.summary["TotalChargePower"]) > 0
+
+
+def test_backup_load_is_not_charge(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    """A grid-fed load on the backup socket passes through; only the 9 W trickle is charge."""
+    coordinator.data = _frame("jet-eps-load.json")
+    assert coordinator.battery_power_w() == 9.0
+    assert AeccBatteryStatusSensor(coordinator, config_entry).native_value == "Idle"
+
+
+def test_battery_power_without_grid_output_has_no_value(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    """No fallback: without TotalGridOutputPower there is no reading, not a wrong one."""
+    coordinator.data = _frame("sunpura-pv-only.json")
+    del coordinator.data["SSumInfoList"]["TotalGridOutputPower"]
+    assert coordinator.battery_power_w() is None
+    assert AeccBatteryPowerSensor(coordinator, config_entry).native_value is None
+    assert AeccBatteryStatusSensor(coordinator, config_entry).native_value is None
+
+
+def test_battery_power_without_pv_counts_pv_as_zero(coordinator: AeccBatteryCoordinator) -> None:
+    coordinator.data = _frame("tsun-discharging.json")
+    del coordinator.data["SSumInfoList"]["TotalPVPower"]
+    assert coordinator.battery_power_w() == -547.0
+
+
+@pytest.mark.parametrize(
+    ("pv", "grid_output", "status"),
+    [
+        (190, 0, "Charging"),
+        (0, 547, "Discharging"),
+        (0, -5, "Idle"),  # standby draw at rest
+        (0, 2, "Idle"),
+        (0, -25, "Idle"),  # the band edge is still idle
+        (0, 25, "Idle"),
+        (0, -26, "Charging"),
+    ],
+)
+def test_battery_status_follows_sign_with_idle_band(
+    coordinator: AeccBatteryCoordinator, config_entry, pv: int, grid_output: int, status: str
+) -> None:
+    coordinator.data = {"SSumInfoList": {"TotalPVPower": pv, "TotalGridOutputPower": grid_output}}
+    assert AeccBatteryStatusSensor(coordinator, config_entry).native_value == status
+
+
+def _energy_sensor(coordinator, config_entry, key: str) -> AeccEnergySensor:
+    spec = next(s for s in _ENERGY_SENSORS if s[0] == key)
+    sensor = AeccEnergySensor(coordinator, config_entry, *spec)
+    sensor.async_write_ha_state = MagicMock()
+    return sensor
+
+
+def _tick(sensors: list[AeccEnergySensor], at) -> None:
+    with patch("custom_components.aecc_battery.sensor.utcnow", return_value=at):
+        for sensor in sensors:
+            sensor._handle_coordinator_update()
+
+
+@pytest.mark.parametrize(
+    ("fixture", "charged_kwh", "discharged_kwh"),
+    [
+        ("sunpura-pv-only.json", 190 * 30 / 3_600_000, 0.0),
+        ("tsun-discharging.json", 0.0, 547 * 30 / 3_600_000),
+    ],
+)
+def test_energy_counters_split_battery_power(
+    coordinator: AeccBatteryCoordinator, config_entry, fixture: str, charged_kwh: float, discharged_kwh: float
+) -> None:
+    """Energy Charged and Discharged integrate the positive and negative part of battery power."""
+    coordinator.data = _frame(fixture)
+    charged = _energy_sensor(coordinator, config_entry, "energy_charged")
+    discharged = _energy_sensor(coordinator, config_entry, "energy_discharged")
+    start = utcnow()
+    _tick([charged, discharged], start)
+    _tick([charged, discharged], start + timedelta(seconds=30))
+    assert charged._accumulated_kwh == pytest.approx(charged_kwh)
+    assert discharged._accumulated_kwh == pytest.approx(discharged_kwh)
+
+
+def test_energy_counters_skip_frames_without_grid_output(coordinator: AeccBatteryCoordinator, config_entry) -> None:
+    coordinator.data = _frame("sunpura-pv-only.json")
+    del coordinator.data["SSumInfoList"]["TotalGridOutputPower"]
+    charged = _energy_sensor(coordinator, config_entry, "energy_charged")
+    discharged = _energy_sensor(coordinator, config_entry, "energy_discharged")
+    start = utcnow()
+    _tick([charged, discharged], start)
+    _tick([charged, discharged], start + timedelta(seconds=30))
+    assert charged._accumulated_kwh == 0.0
+    assert discharged._accumulated_kwh == 0.0
+    assert charged._last_update_time is None

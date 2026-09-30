@@ -168,15 +168,15 @@ Every control command (direction, power, work mode, SOC limits) is automatically
 | Entity | Type | Description |
 |---|---|---|
 | Battery SOC | Sensor (%) | State of charge |
-| Battery Power | Sensor (W) | Signed: positive = charging, negative = discharging |
-| Battery Status | Sensor | Charging, Discharging, or Idle |
-| Energy Charged | Sensor (kWh) | Accumulated charge energy (AC + PV), `total_increasing` |
-| Energy Discharged | Sensor (kWh) | Accumulated discharge energy, `total_increasing` |
+| Battery Power | Sensor (W) | Signed: positive = charging, negative = discharging. Includes PV from panels on the battery |
+| Battery Status | Sensor | Charging, Discharging, or Idle (within 25 W) |
+| Energy Charged | Sensor (kWh) | Accumulated energy into the battery, from the grid and from its panels, `total_increasing` |
+| Energy Discharged | Sensor (kWh) | Accumulated energy the battery delivers to the house, `total_increasing` |
 | Energy Generated | Sensor (kWh) | Accumulated PV energy, `total_increasing` |
 | AC Charging Power | Sensor (W) | AC grid charging power |
 | Battery Discharging Power | Sensor (W) | Discharge power |
 | PV Power | Sensor (W) | Total solar power |
-| PV Charging Power | Sensor (W) | Solar power charging battery |
+| PV Charging Power | Sensor (W) | Diagnostic; the device's own figure, which some models leave at 0 while the panels charge |
 | Grid / Meter Power | Sensor (W) | Smart meter reading |
 | Grid Export Power | Sensor (W) | Power exported to grid |
 | Backup Power | Sensor (W) | Backup/off-grid load power |
@@ -218,6 +218,8 @@ With 2 or more units, the integration creates:
 - The main device with **whole-system** sensors (totals as computed by the master itself) and all controls
 - One **child device per battery** ("Battery 1", "Battery 2", ...) with per-unit SOC, charging/discharging power, PV, backup power, and status
 
+The main device's Battery Power and Battery Status include PV going into the cells; the per-unit values show each unit's own charge and discharge fields only.
+
 **Manual control reaches the master only.** The AECC local protocol has no per-unit control, and the master does not forward a locally written setpoint to the other units. On a paired stack the secondary keeps executing whatever schedule the vendor app last gave it. This was established on AEG Solarcube stacks in [#16](https://github.com/StekkerDeal/aecc-battery-local/issues/16): every register the integration writes is confirmed applied and matches the state the app leaves behind, yet only the master responds. The app drives the other units through the cloud, which this integration deliberately does not use. Monitoring of every unit is unaffected.
 
 **If you need to control both units**, register each battery separately in the vendor app instead of pairing them, so each gets its own IP and answers on port 8080. Add the integration once per battery and send each entry its share of the target. One owner runs this with an automation writing half the target to each unit ([#16](https://github.com/StekkerDeal/aecc-battery-local/issues/16)). Totals then come from Home Assistant rather than from the master. This is the supported way to control a multi-unit system today.
@@ -235,6 +237,7 @@ Single-unit systems are unaffected (no child devices). If you add or remove a ba
 3. **Energy going in**: select `Energy Charged`
 4. **Energy coming out**: select `Energy Discharged`
 5. Click **Save**
+6. If panels are connected to the battery itself: in **Solar Panels**, add `Energy Generated`
 
 Energy sensors use Riemann sum integration and persist across restarts. The Lifetime Energy counters read over Modbus count at the battery, behind the inverter, so they leave out the inverter losses the house actually pays. They are not Energy Dashboard inputs; keep using Energy Charged and Energy Discharged there. Lifetime Energy to Grid needs an external meter or CT and reads 0 without one.
 

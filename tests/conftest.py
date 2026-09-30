@@ -106,6 +106,7 @@ def mock_tcp_client():
                     "TotalBatteryOutputPower": "100",
                     "TotalPVPower": "500",
                     "TotalPVChargePower": "400",
+                    "TotalGridOutputPower": "100",
                     "MeterTotalActivePower": "200",
                     "TotalBackUpPower": "0",
                     "ControlEnableStatus": "1",
