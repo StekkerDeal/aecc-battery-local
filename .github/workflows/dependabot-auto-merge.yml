@@ -13,7 +13,9 @@ concurrency:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    # Check who opened the PR, not who triggered the event: github.actor can be
+    # dependabot[bot] on a fork PR when Dependabot pushes to the fork's branch.
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
