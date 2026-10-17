@@ -325,7 +325,7 @@ If you have an AECC-platform battery from a brand not yet listed as tested:
 1. Install the integration and select your brand (or "Other")
 2. **Start with monitoring only**, check that sensors return data and values look correct
 3. Only try control features after confirming sensors work
-4. Open an issue or PR to let us know your results
+4. Open an issue to let us know your results
 
 The integration writes the same registers as the official AECC app, but different devices may have firmware variations.
 
