@@ -71,7 +71,7 @@ If your battery uses the AECC app (or a white-labeled version), connects to an `
 
 ## Requirements
 
-- Home Assistant **2024.1.0** or newer
+- Home Assistant **2026.8.0** or newer
 - Battery on the **same local network** as Home Assistant
 - Battery's **static IP address** and **TCP port** (typically 8080)
 

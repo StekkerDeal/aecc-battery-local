@@ -94,10 +94,10 @@ async def test_migration_renames_legacy_device(hass: HomeAssistant) -> None:
     reg = dr.async_get(hass)
     reg.async_get_or_create(config_entry_id=entry.entry_id, identifiers={(DOMAIN, _LEGACY)})
 
-    _migrate_device_identifier(hass, _HOST, _PORT, _SERIAL)
+    _migrate_device_identifier(hass, entry.entry_id, _HOST, _PORT, _SERIAL)
 
-    assert reg.async_get_device(identifiers={(DOMAIN, _LEGACY)}) is None
-    assert reg.async_get_device(identifiers={(DOMAIN, _SERIAL)}) is not None
+    assert reg.async_get_device_by_identifier((DOMAIN, _LEGACY), entry.entry_id) is None
+    assert reg.async_get_device_by_identifier((DOMAIN, _SERIAL), entry.entry_id) is not None
 
 
 async def test_migration_removes_orphan_when_serial_device_exists(hass: HomeAssistant) -> None:
@@ -107,10 +107,10 @@ async def test_migration_removes_orphan_when_serial_device_exists(hass: HomeAssi
     reg.async_get_or_create(config_entry_id=entry.entry_id, identifiers={(DOMAIN, _LEGACY)})
     reg.async_get_or_create(config_entry_id=entry.entry_id, identifiers={(DOMAIN, _SERIAL)})
 
-    _migrate_device_identifier(hass, _HOST, _PORT, _SERIAL)
+    _migrate_device_identifier(hass, entry.entry_id, _HOST, _PORT, _SERIAL)
 
-    assert reg.async_get_device(identifiers={(DOMAIN, _LEGACY)}) is None
-    assert reg.async_get_device(identifiers={(DOMAIN, _SERIAL)}) is not None
+    assert reg.async_get_device_by_identifier((DOMAIN, _LEGACY), entry.entry_id) is None
+    assert reg.async_get_device_by_identifier((DOMAIN, _SERIAL), entry.entry_id) is not None
 
 
 async def test_migration_noop_without_serial(hass: HomeAssistant) -> None:
@@ -119,9 +119,9 @@ async def test_migration_noop_without_serial(hass: HomeAssistant) -> None:
     reg = dr.async_get(hass)
     reg.async_get_or_create(config_entry_id=entry.entry_id, identifiers={(DOMAIN, _LEGACY)})
 
-    _migrate_device_identifier(hass, _HOST, _PORT, None)
+    _migrate_device_identifier(hass, entry.entry_id, _HOST, _PORT, None)
 
-    assert reg.async_get_device(identifiers={(DOMAIN, _LEGACY)}) is not None
+    assert reg.async_get_device_by_identifier((DOMAIN, _LEGACY), entry.entry_id) is not None
 
 
 async def test_migration_noop_when_no_legacy_device(hass: HomeAssistant) -> None:
@@ -130,9 +130,9 @@ async def test_migration_noop_when_no_legacy_device(hass: HomeAssistant) -> None
     reg = dr.async_get(hass)
     reg.async_get_or_create(config_entry_id=entry.entry_id, identifiers={(DOMAIN, _SERIAL)})
 
-    _migrate_device_identifier(hass, _HOST, _PORT, _SERIAL)
+    _migrate_device_identifier(hass, entry.entry_id, _HOST, _PORT, _SERIAL)
 
-    assert reg.async_get_device(identifiers={(DOMAIN, _SERIAL)}) is not None
+    assert reg.async_get_device_by_identifier((DOMAIN, _SERIAL), entry.entry_id) is not None
 
 
 # ── Socket discipline across failed setups ────────────────────────────────────

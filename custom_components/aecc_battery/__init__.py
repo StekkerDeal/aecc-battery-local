@@ -85,7 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # JET). 1.4.4 fixed the parse, so the identifier flips to the serial and HA
     # would otherwise create a second device and orphan the old one. Migrate the
     # old device in place before entities attach.
-    _migrate_device_identifier(hass, host, port, coordinator.device_serial)
+    _migrate_device_identifier(hass, entry.entry_id, host, port, coordinator.device_serial)
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -95,7 +95,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-def _migrate_device_identifier(hass: HomeAssistant, host: str, port: int, serial: str | None) -> None:
+def _migrate_device_identifier(hass: HomeAssistant, entry_id: str, host: str, port: int, serial: str | None) -> None:
     """Move the pre-1.4.4 host:port device onto the serial identifier.
 
     No-op when the device never reported a serial (identifier stays host:port) or
@@ -106,10 +106,10 @@ def _migrate_device_identifier(hass: HomeAssistant, host: str, port: int, serial
     if not serial:
         return
     registry = dr.async_get(hass)
-    old = registry.async_get_device(identifiers={(DOMAIN, f"{host}:{port}")})
+    old = registry.async_get_device_by_identifier((DOMAIN, f"{host}:{port}"), entry_id)
     if old is None:
         return
-    existing = registry.async_get_device(identifiers={(DOMAIN, serial)})
+    existing = registry.async_get_device_by_identifier((DOMAIN, serial), entry_id)
     if existing is not None and existing.id != old.id:
         registry.async_remove_device(old.id)
         _LOGGER.info("Removed orphaned host:port device for %s (now keyed by serial)", host)
