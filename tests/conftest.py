@@ -16,12 +16,6 @@ from custom_components.aecc_battery.const import (
 )
 
 
-@pytest.fixture(autouse=True)
-def auto_enable_custom_integrations(enable_custom_integrations):
-    """Enable loading custom_components in all tests."""
-    yield
-
-
 class SocketTracker:
     """Counting fake for ``asyncio.open_connection``.
 

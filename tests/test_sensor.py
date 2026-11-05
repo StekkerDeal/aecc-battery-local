@@ -19,7 +19,7 @@ import pytest
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, State
 from homeassistant.util.dt import utcnow
-from pytest_homeassistant_custom_component.common import mock_restore_cache, mock_restore_cache_with_extra_data
+from pytest_homeassistant.common import mock_restore_cache, mock_restore_cache_with_extra_data
 
 from custom_components.aecc_battery.const import BRAND_PROFILES
 from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator
