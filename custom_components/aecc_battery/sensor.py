@@ -452,6 +452,12 @@ class AeccEnergySensor(CoordinatorEntity[AeccBatteryCoordinator], RestoreSensor)
                 self._accumulated_kwh = 0.0
 
     @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        # Nothing here is keyed on entity_id, so a rename can update in place
+        # and keep the running total instead of removing and re-adding.
+        super().async_entity_id_changed(old_entity_id)
+
+    @callback
     def _handle_coordinator_update(self) -> None:
         now = utcnow()
 
