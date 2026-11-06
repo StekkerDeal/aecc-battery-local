@@ -20,6 +20,7 @@ from custom_components.aecc_battery.const import (
     REG_AI_SMART_CHARGE,
     REG_AI_SMART_DISC,
     REG_CONTROL_TIME1,
+    REG_CONTROL_TIME_REST,
     REG_CUSTOM_MODE,
     REG_EMS_ENABLE,
     REG_MAX_FEED_POWER,
@@ -467,6 +468,29 @@ async def test_non_aeg_work_mode_custom_keeps_schedule_mode_6(
 
     payload = coordinator.client.set_control_parameters.call_args[0][0]
     assert payload[REG_SCHEDULE_MODE] == SCHEDULE_MODE_CUSTOM == "6"
+
+
+async def test_work_mode_custom_clears_slots_2_to_16(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """#36: switching to Custom leaves nothing in 3004-3018 for the battery to run."""
+    await coordinator.async_set_work_mode(MODE_CUSTOM)
+
+    payload = coordinator.client.set_control_parameters.call_args[0][0]
+    assert REG_CONTROL_TIME_REST == tuple(str(reg) for reg in range(3004, 3019))
+    for reg in REG_CONTROL_TIME_REST:
+        assert payload[reg] == SLOT_DISABLED
+    assert REG_CONTROL_TIME1 not in payload
+
+
+async def test_self_consumption_leaves_slots_2_to_16_alone(
+    coordinator: AeccBatteryCoordinator,
+) -> None:
+    """The hand-back clears slot 1 only; the device's own logic owns the rest."""
+    await coordinator.async_set_work_mode(MODE_SELF_CONSUMPTION)
+
+    payload = coordinator.client.set_control_parameters.call_args[0][0]
+    assert not set(REG_CONTROL_TIME_REST) & set(payload)
 
 
 async def test_aeg_self_consumption_schedule_mode_unchanged(

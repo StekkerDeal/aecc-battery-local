@@ -207,6 +207,9 @@ REG_CUSTOM_MODE = "3030"  # 0 = off, 1 = on
 #        "1,00:00,23:59,800,0,6,0,0,0,100,10"    (AEG discharge at 800 W)
 # Gated on BRAND_AEG; see _encode_active_slot in coordinator.
 REG_CONTROL_TIME1 = "3003"  # First active time slot
+# Slots 2-16. The integration never fills them; taking control clears whatever
+# another writer left there.
+REG_CONTROL_TIME_REST = tuple(str(reg) for reg in range(3004, 3019))
 
 REG_MIN_SOC = "3023"  # Minimum discharge SOC  (confirmed: currently 10)
 REG_MAX_SOC = "3024"  # Maximum charge SOC     (confirmed: currently 98)
@@ -271,5 +274,6 @@ MODE_REGISTERS = {
         REG_AI_SMART_CHARGE: "0",
         REG_AI_SMART_DISC: "0",
         REG_CUSTOM_MODE: "1",
+        **dict.fromkeys(REG_CONTROL_TIME_REST, SLOT_DISABLED),
     },
 }
