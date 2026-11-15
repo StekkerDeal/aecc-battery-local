@@ -92,7 +92,10 @@ Adding it by hand instead:
 5. Search for **AECC Battery** and click **Download**
 6. Restart Home Assistant
 
-Risky changes are published as pre-releases first, so they can be tried on real hardware before everyone gets them. To install one, open the integration's page in HACS, choose **Redownload** from the three-dot menu, expand **Need a different version?** and pick the beta from the Release list.
+Risky changes are published as pre-releases first, so they can be tried on real hardware before everyone gets them. To install one:
+
+- **Home Assistant 2026.11 or later (Marketplace):** under **Settings > Devices & services > Marketplace**, enable the repository's **Pre-release** entity and turn the switch on. Then open **Settings > Marketplace**, select the repository and choose **Install another version** from the three-dot menu.
+- **Earlier versions (HACS):** open the integration's page in HACS, choose **Redownload** from the three-dot menu, expand **Need a different version?** and pick the beta.
 
 ---
 
