@@ -66,6 +66,7 @@ async def test_diagnostics_returns_all_top_level_sections(hass: HomeAssistant, s
     assert diag["integration"]["domain"] == DOMAIN
     assert diag["integration"]["version"]  # version resolved from manifest
     assert diag["modbus"]["supported"] is None
+    assert diag["modbus"]["transport"] is None
     assert diag["modbus"]["values"] == {}
 
 

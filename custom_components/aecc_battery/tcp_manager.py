@@ -80,12 +80,12 @@ class TCPClientManager:
         if self.writer is not None:
             await self.close()
         try:
-            _LOGGER.info("Connecting to %s:%s (timeout=%ss)", self.host, self.port, self.timeout)
+            _LOGGER.debug("Connecting to %s:%s (timeout=%ss)", self.host, self.port, self.timeout)
             self.reader, self.writer = await asyncio.wait_for(
                 asyncio.open_connection(self.host, self.port),
                 timeout=self.timeout,
             )
-            _LOGGER.info("Connected to %s:%s", self.host, self.port)
+            _LOGGER.debug("Connected to %s:%s", self.host, self.port)
         except TimeoutError:
             _LOGGER.error("Connection timed out: %s:%s", self.host, self.port)
             raise
@@ -100,7 +100,7 @@ class TCPClientManager:
                 await self.writer.wait_closed()
             except OSError:
                 pass
-            _LOGGER.info("Closed connection to %s:%s", self.host, self.port)
+            _LOGGER.debug("Closed connection to %s:%s", self.host, self.port)
         self.reader = None
         self.writer = None
 

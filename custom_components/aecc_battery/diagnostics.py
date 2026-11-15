@@ -164,6 +164,7 @@ async def async_get_config_entry_diagnostics(
 
     modbus_section = {
         "supported": coordinator.modbus_supported,
+        "transport": coordinator.modbus_transport,
         "values": {str(register): value for register, value in coordinator.modbus.items()},
         "last_refresh_age_seconds": coordinator.modbus_refresh_age,
         "last_error": coordinator._last_modbus_error,

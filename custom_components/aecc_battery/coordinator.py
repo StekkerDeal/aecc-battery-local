@@ -23,6 +23,8 @@ from .const import (
     MODBUS_BLOCKS,
     MODBUS_REFRESH_INTERVAL,
     MODBUS_REGISTERS,
+    MODBUS_TRANSPORT_SEPARATE,
+    MODBUS_TRANSPORT_SHARED,
     MODE_CUSTOM,
     MODE_REGISTERS,
     MODE_SELF_CONSUMPTION,
@@ -124,6 +126,10 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Modbus telemetry. None until the setup probe has run; the entities
         # only exist when it answered. Values are keyed by register address.
         self.modbus_supported: bool | None = None
+        # "shared" (the JSON socket) or "separate" (a connection per round),
+        # picked by the probe; None when Modbus is not available.
+        self.modbus_transport: str | None = None
+        self._modbus_first_block_silent = False
         self.modbus: dict[int, int | float] = {}
         self._last_modbus_refresh: float | None = None
         self._last_modbus_error: str | None = None
@@ -309,11 +315,27 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._parse_device_management(info)
 
     async def async_probe_modbus(self) -> None:
-        """Find out once whether the device answers the Modbus telemetry map."""
-        self.modbus_supported = await self._refresh_modbus()
-        if self.modbus_supported:
-            _LOGGER.info("Modbus telemetry available (%d registers)", len(self.modbus))
+        """Find out once whether, and over which connection, the device answers the Modbus map.
+
+        The JSON socket first. Silence there, not a refusal, means firmware that
+        only answers a connection's first protocol, so the blocks get one try on
+        a connection of their own. The shared try needs a socket that started
+        with JSON, so a closed or unused one is opened with a JSON request first.
+        """
+        if not self.client.json_socket_open:
+            await self.client.get_energy_parameters()
+        self.modbus_transport = MODBUS_TRANSPORT_SHARED
+        supported = await self._refresh_modbus()
+        if not supported and self._modbus_first_block_silent:
+            self.modbus_transport = MODBUS_TRANSPORT_SEPARATE
+            supported = await self._refresh_modbus()
+        self.modbus_supported = supported
+        if supported:
+            _LOGGER.info(
+                "Modbus telemetry available (%d registers, %s connection)", len(self.modbus), self.modbus_transport
+            )
         else:
+            self.modbus_transport = None
             _LOGGER.debug("Modbus telemetry not available: %s", self._last_modbus_error)
 
     async def _async_maybe_refresh_modbus(self) -> None:
@@ -335,17 +357,35 @@ class AeccBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("Modbus refresh failed: %s", exc)
 
     async def _refresh_modbus(self) -> bool:
-        """Read every block and decode what answered. True when the first block did.
+        """Read every block over the probed connection and decode what answered.
 
-        A block the device refuses (exception reply) is skipped, since a brand may
-        expose part of the map. A block with no usable reply stops the round: the
-        client has closed the socket and further frames would go nowhere.
+        True when the first block answered. A block the device refuses (exception
+        reply) is skipped, since a brand may expose part of the map. A block with
+        no usable reply stops the round: the client has closed the socket and
+        further frames would go nowhere.
         """
         self._last_modbus_error = None
+        results: list[list[int] | ModbusException | None]
+        if self.modbus_transport == MODBUS_TRANSPORT_SEPARATE:
+            separate = await self.client.read_register_blocks_separately(MODBUS_BLOCKS)
+            if separate is None:
+                self._modbus_first_block_silent = True
+                self._last_modbus_error = "separate connection failed"
+                self._last_modbus_refresh = time.monotonic()
+                return False
+            results = separate
+        else:
+            results = []
+            for start, count in MODBUS_BLOCKS:
+                result = await self.client.read_holding_registers(start, count)
+                results.append(result)
+                if result is None:
+                    break
+        self._modbus_first_block_silent = not results or results[0] is None
+
         words: dict[int, int] = {}
         first_block_ok = False
-        for index, (start, count) in enumerate(MODBUS_BLOCKS):
-            result = await self.client.read_holding_registers(start, count)
+        for index, ((start, count), result) in enumerate(zip(MODBUS_BLOCKS, results, strict=False)):
             if result is None:
                 self._last_modbus_error = f"no reply for {start} x{count}"
                 break

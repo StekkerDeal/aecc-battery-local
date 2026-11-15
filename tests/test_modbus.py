@@ -32,6 +32,7 @@ from custom_components.aecc_battery.coordinator import AeccBatteryCoordinator, _
 from custom_components.aecc_battery.sensor import _MODBUS_SENSORS, AeccModbusSensor
 from custom_components.aecc_battery.tcp_client import AeccTcpClient, ModbusException
 from custom_components.aecc_battery.tcp_manager import TCPClientManager
+from tests.conftest import TSUN_BLOCKS, TSUN_TELEMETRY
 
 # The real TSUN reply to "read 1 register at 65030": SOC 70.
 SOC_REPLY = bytes.fromhex("0001000000050103020046")
@@ -133,17 +134,8 @@ def test_decode_helpers() -> None:
 
 # ── Coordinator ────────────────────────────────────────────────────────────────
 
-# One word list per block, in MODBUS_BLOCKS order, as the TSUN answered on 2026-09-17.
-_TELEMETRY = [0] * 23
-_TELEMETRY[65033 - 65030] = 2405
-_TELEMETRY[65035 - 65030] = 2500
-_TELEMETRY[65037 - 65030] = 2500
-_TSUN_BLOCKS = {
-    (65030, 23): _TELEMETRY,
-    (30073, 3): [454, 454, 485],
-    (52050, 4): [509, 0, 463, 0],
-    (52080, 2): [0, 0],
-}
+_TELEMETRY = TSUN_TELEMETRY
+_TSUN_BLOCKS = TSUN_BLOCKS
 
 
 def _answering(blocks=_TSUN_BLOCKS):
@@ -159,6 +151,7 @@ def coordinator(hass: HomeAssistant) -> AeccBatteryCoordinator:
     client.host = "192.168.1.100"
     client.port = 8080
     client.consecutive_failures = 0
+    client.read_register_blocks_separately = AsyncMock(return_value=None)
     coord = AeccBatteryCoordinator(hass, client, device_name="Test", manufacturer="TSUN")
     coord.data = {"SSumInfoList": {"AverageBatteryAverageSOC": "70"}}
     return coord

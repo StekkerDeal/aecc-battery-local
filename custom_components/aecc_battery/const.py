@@ -39,12 +39,16 @@ IDLE_DEADBAND_W = 25  # watts - Battery Status reads Idle within this band
 # avoid doubling traffic; RSSI changes slowly so 60s granularity is plenty.
 WIFI_RSSI_REFRESH_INTERVAL = 60  # seconds
 
-# Modbus TCP telemetry. The device answers plain Modbus frames on the same socket
-# as the JSON protocol (dispatch is per frame). Read-only: no write function
-# codes exist in this integration. The map is disjoint from the 3000+ JSON
-# control registers and not every brand is known to expose it, so it is probed
-# once at setup and the entities only exist when the probe answers.
+# Modbus TCP telemetry on the JSON port. Most firmware answers both protocols on
+# one socket (dispatch per frame); some only answer the protocol of a
+# connection's first frame, and there the blocks are read on a short connection
+# of their own. Read-only: no write function codes exist in this integration.
+# The map is disjoint from the 3000+ JSON control registers and not every brand
+# is known to expose it, so it is probed at setup, which also picks the
+# connection, and the entities only exist when the probe answers.
 MODBUS_UNIT_ID = 1
+MODBUS_TRANSPORT_SHARED = "shared"
+MODBUS_TRANSPORT_SEPARATE = "separate"
 MODBUS_REFRESH_INTERVAL = 30  # seconds - temperatures and counters move slowly
 MODBUS_READ_TIMEOUT = 3  # seconds - same budget as the DeviceManagement probe
 # (start, count) blocks; every register below falls inside one of them.

@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import struct
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -77,6 +78,17 @@ class AeccTcpClient:
         self._connected = False
 
     @property
+    def json_socket_open(self) -> bool:
+        """True when the open socket has carried JSON, so its first frame was JSON."""
+        writer = self._manager.writer
+        return (
+            writer is not None
+            and not writer.is_closing()
+            and self._manager.reader is not None
+            and self._manager.reader is self._rx_reader
+        )
+
+    @property
     def consecutive_failures(self) -> int:
         """Connection-failure streak from the shared manager (0 = healthy)."""
         return self._manager.consecutive_failures
@@ -135,34 +147,73 @@ class AeccTcpClient:
     async def read_holding_registers(self, start: int, count: int) -> list[int] | ModbusException | None:
         """Read ``count`` holding registers from ``start`` over Modbus TCP.
 
-        Same socket and lock as the JSON commands; the device dispatches per
-        frame. Returns the unsigned 16-bit words, a ModbusException when the
+        Same socket and lock as the JSON commands, for firmware that dispatches
+        per frame. Returns the unsigned 16-bit words, a ModbusException when the
         device refused the address, or None when nothing usable came back. In
         that last case the socket is closed so the JSON path never inherits a
         half-read binary reply. Read-only by design: this is the only Modbus
         function code in the integration.
         """
+        async with self._io_lock:
+            try:
+                reader, writer = await self._manager.get_reader_writer()
+            except (TimeoutError, OSError) as exc:
+                _LOGGER.debug("Modbus read %d x%d failed: %s", start, count, exc)
+                return None
+            self._connected = True
+            return await self._modbus_exchange(reader, writer, start, count)
+
+    async def read_register_blocks_separately(
+        self, blocks: Sequence[tuple[int, int]]
+    ) -> list[list[int] | ModbusException | None] | None:
+        """Read blocks on a connection of their own, closed again afterwards.
+
+        For firmware that only answers the protocol of a connection's first
+        frame. The JSON socket is closed first, so a device that serves one
+        client never sees two; the next JSON request reconnects. Returns None
+        when the connection could not be opened, otherwise one result per
+        block, stopping after the first None.
+        """
+        async with self._io_lock:
+            await self._manager.close()
+            try:
+                try:
+                    reader, writer = await self._manager.get_reader_writer()
+                except (TimeoutError, OSError) as exc:
+                    _LOGGER.debug("Modbus connection failed: %s", exc)
+                    return None
+                results: list[list[int] | ModbusException | None] = []
+                for start, count in blocks:
+                    result = await self._modbus_exchange(reader, writer, start, count)
+                    results.append(result)
+                    if result is None:
+                        break
+                return results
+            finally:
+                await self._manager.close()
+
+    async def _modbus_exchange(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, start: int, count: int
+    ) -> list[int] | ModbusException | None:
+        """Send one read request and decode the reply. Caller holds _io_lock."""
         self._modbus_tid = (self._modbus_tid + 1) & 0xFFFF
         tid = self._modbus_tid
         request = struct.pack(
             ">HHHBBHH", tid, _MODBUS_PROTOCOL_ID, 6, MODBUS_UNIT_ID, _MODBUS_FC_READ_HOLDING, start, count
         )
-        async with self._io_lock:
-            try:
-                reader, writer = await self._manager.get_reader_writer()
-                self._connected = True
-                writer.write(request)
-                await writer.drain()
-                async with asyncio.timeout(MODBUS_READ_TIMEOUT):
-                    header = await reader.readexactly(_MODBUS_MBAP_LEN)
-                    rx_tid, rx_proto, length, rx_unit = struct.unpack(">HHHB", header)
-                    if rx_tid != tid or rx_proto != _MODBUS_PROTOCOL_ID or rx_unit != MODBUS_UNIT_ID or length < 2:
-                        raise ValueError(f"unexpected MBAP header {header.hex()}")
-                    pdu = await reader.readexactly(length - 1)
-            except (TimeoutError, ValueError, ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
-                _LOGGER.debug("Modbus read %d x%d failed: %s - closing socket", start, count, exc)
-                await self._manager.close()
-                return None
+        try:
+            writer.write(request)
+            await writer.drain()
+            async with asyncio.timeout(MODBUS_READ_TIMEOUT):
+                header = await reader.readexactly(_MODBUS_MBAP_LEN)
+                rx_tid, rx_proto, length, rx_unit = struct.unpack(">HHHB", header)
+                if rx_tid != tid or rx_proto != _MODBUS_PROTOCOL_ID or rx_unit != MODBUS_UNIT_ID or length < 2:
+                    raise ValueError(f"unexpected MBAP header {header.hex()}")
+                pdu = await reader.readexactly(length - 1)
+        except (TimeoutError, ValueError, ConnectionResetError, OSError, asyncio.IncompleteReadError) as exc:
+            _LOGGER.debug("Modbus read %d x%d failed: %s - closing socket", start, count, exc)
+            await self._manager.close()
+            return None
 
         function = pdu[0]
         if function == _MODBUS_FC_READ_HOLDING | 0x80 and len(pdu) >= 2:
